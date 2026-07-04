@@ -6,30 +6,30 @@ use std::sync::LazyLock;
 
 const CONFIG_FILE: &str = "blur.config";
 
-static D3D9_DLL: &[u8] = include_bytes!("../d3d9.dll");
-static DISCORD_RPC_DLL: &[u8] = include_bytes!("../discord-rpc.dll");
-static LUA51_DLL: &[u8] = include_bytes!("../lua5.1.dll");
+static D3D9_DLL: &[u8] = include_bytes!("../files/d3d9.dll");
+static DISCORD_RPC_DLL: &[u8] = include_bytes!("../files/discord-rpc.dll");
+static LUA51_DLL: &[u8] = include_bytes!("../files/lua5.1.dll");
 
 static AMAX_FILES: LazyLock<HashMap<&'static str, &'static [u8]>> = LazyLock::new(|| {
     let mut m: HashMap<&str, &[u8]> = HashMap::new();
-    m.insert("init.lua", &*include_bytes!("../amax/init.lua"));
-    m.insert("init.luac", &*include_bytes!("../amax/init.luac"));
-    m.insert("loader.lua", &*include_bytes!("../amax/loader.lua"));
-    m.insert("config/amax-redirect.cfg", &*include_bytes!("../amax/config/amax-redirect.cfg"));
-    m.insert("dlls/amax_auth.asi", &*include_bytes!("../amax/dlls/amax_auth.asi"));
-    m.insert("dlls/amax_pfp.dll", &*include_bytes!("../amax/dlls/amax_pfp.dll"));
-    m.insert("dlls/blur_rpc.dll", &*include_bytes!("../amax/dlls/blur_rpc.dll"));
-    m.insert("dlls/lua_hooks.asi", &*include_bytes!("../amax/dlls/lua_hooks.asi"));
-    m.insert("log/.gitkeep", &*include_bytes!("../amax/log/.gitkeep"));
-    m.insert("plugins/plugins.lua", &*include_bytes!("../amax/plugins/plugins.lua"));
-    m.insert("plugins/default/block_popups.luac", &*include_bytes!("../amax/plugins/default/block_popups.luac"));
-    m.insert("plugins/default/laps.luac", &*include_bytes!("../amax/plugins/default/laps.luac"));
-    m.insert("plugins/default/resprays.luac", &*include_bytes!("../amax/plugins/default/resprays.luac"));
-    m.insert("plugins/foo/foo.lua", &*include_bytes!("../amax/plugins/foo/foo.lua"));
-    m.insert("plugins/fps/fps.lua", &*include_bytes!("../amax/plugins/fps/fps.lua"));
-    m.insert("plugins/hello/hello.lua", &*include_bytes!("../amax/plugins/hello/hello.lua"));
-    m.insert("plugins/revs/revs.luac", &*include_bytes!("../amax/plugins/revs/revs.luac"));
-    m.insert("plugins/solo/solo.luac", &*include_bytes!("../amax/plugins/solo/solo.luac"));
+    m.insert("init.lua", &*include_bytes!("../files/amax/init.lua"));
+    m.insert("init.luac", &*include_bytes!("../files/amax/init.luac"));
+    m.insert("loader.lua", &*include_bytes!("../files/amax/loader.lua"));
+    m.insert("config/amax-redirect.cfg", &*include_bytes!("../files/amax/config/amax-redirect.cfg"));
+    m.insert("dlls/amax_auth.asi", &*include_bytes!("../files/amax/dlls/amax_auth.asi"));
+    m.insert("dlls/amax_pfp.dll", &*include_bytes!("../files/amax/dlls/amax_pfp.dll"));
+    m.insert("dlls/blur_rpc.dll", &*include_bytes!("../files/amax/dlls/blur_rpc.dll"));
+    m.insert("dlls/lua_hooks.asi", &*include_bytes!("../files/amax/dlls/lua_hooks.asi"));
+    m.insert("log/.gitkeep", &*include_bytes!("../files/amax/log/.gitkeep"));
+    m.insert("plugins/plugins.lua", &*include_bytes!("../files/amax/plugins/plugins.lua"));
+    m.insert("plugins/default/block_popups.luac", &*include_bytes!("../files/amax/plugins/default/block_popups.luac"));
+    m.insert("plugins/default/laps.luac", &*include_bytes!("../files/amax/plugins/default/laps.luac"));
+    m.insert("plugins/default/resprays.luac", &*include_bytes!("../files/amax/plugins/default/resprays.luac"));
+    m.insert("plugins/foo/foo.lua", &*include_bytes!("../files/amax/plugins/foo/foo.lua"));
+    m.insert("plugins/fps/fps.lua", &*include_bytes!("../files/amax/plugins/fps/fps.lua"));
+    m.insert("plugins/hello/hello.lua", &*include_bytes!("../files/amax/plugins/hello/hello.lua"));
+    m.insert("plugins/revs/revs.luac", &*include_bytes!("../files/amax/plugins/revs/revs.luac"));
+    m.insert("plugins/solo/solo.luac", &*include_bytes!("../files/amax/plugins/solo/solo.luac"));
     m
 });
 
