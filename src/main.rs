@@ -106,12 +106,15 @@ Get-NetAdapter |
   }
 "#;
 
-    let output = Command::new("powershell")
+    match Command::new("powershell")
         .args(["-NoProfile", "-Command", ps_script])
-        .output();
-
-    match output {
+        .output()
+    {
         Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if !stdout.trim().is_empty() {
+                print!("{}", stdout);
+            }
             if !o.status.success() {
                 let stderr = String::from_utf8_lossy(&o.stderr);
                 if !stderr.trim().is_empty() {
@@ -135,12 +138,15 @@ Get-NetAdapter |
   }
 "#;
 
-    let output = Command::new("powershell")
+    match Command::new("powershell")
         .args(["-NoProfile", "-Command", ps_script])
-        .output();
-
-    match output {
+        .output()
+    {
         Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if !stdout.trim().is_empty() {
+                print!("{}", stdout);
+            }
             if !o.status.success() {
                 let stderr = String::from_utf8_lossy(&o.stderr);
                 if !stderr.trim().is_empty() {
