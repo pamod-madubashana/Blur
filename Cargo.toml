@@ -1,0 +1,8 @@
+[package]
+name = "blur-launcher"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rfd = "0.15"
+include_dir = "0.7"

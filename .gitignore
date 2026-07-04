@@ -1,0 +1,9 @@
+/target
+*.exe
+*.pdb
+blur.config
+graphify-out/
+.opencode/
+.agents/
+.graphifyignore
+graphify-out\cache\stat-index.json
