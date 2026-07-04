@@ -1,14 +1,37 @@
+use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::LazyLock;
 
 const CONFIG_FILE: &str = "blur.config";
 
 static D3D9_DLL: &[u8] = include_bytes!("../d3d9.dll");
 static DISCORD_RPC_DLL: &[u8] = include_bytes!("../discord-rpc.dll");
 static LUA51_DLL: &[u8] = include_bytes!("../lua5.1.dll");
-static AMAX_DIR: include_dir::Dir = include_dir::include_dir!("../amax");
+
+static AMAX_FILES: LazyLock<HashMap<&'static str, &'static [u8]>> = LazyLock::new(|| {
+    let mut m: HashMap<&str, &[u8]> = HashMap::new();
+    m.insert("init.lua", &*include_bytes!("../amax/init.lua"));
+    m.insert("init.luac", &*include_bytes!("../amax/init.luac"));
+    m.insert("loader.lua", &*include_bytes!("../amax/loader.lua"));
+    m.insert("config/amax-redirect.cfg", &*include_bytes!("../amax/config/amax-redirect.cfg"));
+    m.insert("dlls/amax_auth.asi", &*include_bytes!("../amax/dlls/amax_auth.asi"));
+    m.insert("dlls/amax_pfp.dll", &*include_bytes!("../amax/dlls/amax_pfp.dll"));
+    m.insert("dlls/blur_rpc.dll", &*include_bytes!("../amax/dlls/blur_rpc.dll"));
+    m.insert("dlls/lua_hooks.asi", &*include_bytes!("../amax/dlls/lua_hooks.asi"));
+    m.insert("log/.gitkeep", &*include_bytes!("../amax/log/.gitkeep"));
+    m.insert("plugins/plugins.lua", &*include_bytes!("../amax/plugins/plugins.lua"));
+    m.insert("plugins/default/block_popups.luac", &*include_bytes!("../amax/plugins/default/block_popups.luac"));
+    m.insert("plugins/default/laps.luac", &*include_bytes!("../amax/plugins/default/laps.luac"));
+    m.insert("plugins/default/resprays.luac", &*include_bytes!("../amax/plugins/default/resprays.luac"));
+    m.insert("plugins/foo/foo.lua", &*include_bytes!("../amax/plugins/foo/foo.lua"));
+    m.insert("plugins/fps/fps.lua", &*include_bytes!("../amax/plugins/fps/fps.lua"));
+    m.insert("plugins/hello/hello.lua", &*include_bytes!("../amax/plugins/hello/hello.lua"));
+    m.insert("plugins/revs/revs.luac", &*include_bytes!("../amax/plugins/revs/revs.luac"));
+    m.insert("plugins/solo/solo.luac", &*include_bytes!("../amax/plugins/solo/solo.luac"));
+    m
+});
 
 fn log(msg: &str) {
     println!("[+] {}", msg);
@@ -154,31 +177,23 @@ fn copy_files_to_game(game_dir: &Path) {
         }
     }
 
-    let dst = game_dir.join("amax");
-    if dst.exists() {
-        log("Already exists, skipping: amax/");
-    } else {
-        match extract_dir(&AMAX_DIR, &dst) {
-            Ok(_) => log("Extracted: amax/"),
-            Err(e) => log_err(&format!("Failed to extract amax: {}", e)),
-        }
-    }
-}
+    for (rel_path, data) in AMAX_FILES.iter() {
+        let dst = game_dir.join("amax").join(rel_path);
 
-fn extract_dir(dir: &include_dir::Dir, dst: &Path) -> io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for file in dir.files() {
-        let file_path = dst.join(file.path());
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)?;
+        if dst.exists() {
+            log(&format!("Already exists, skipping: amax/{}", rel_path));
+            continue;
         }
-        fs::write(&file_path, file.contents())?;
+
+        if let Some(parent) = dst.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        match fs::write(&dst, data) {
+            Ok(_) => log(&format!("Extracted: amax/{}", rel_path)),
+            Err(e) => log_err(&format!("Failed to write amax/{}: {}", rel_path, e)),
+        }
     }
-    for sub in dir.dirs() {
-        let sub_dst = dst.join(sub.path());
-        extract_dir(sub, &sub_dst)?;
-    }
-    Ok(())
 }
 
 // ── Firewall Rules ──────────────────────────────────────────────────
