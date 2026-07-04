@@ -7,3 +7,4 @@ blur.config
 .graphifyignore
 graphify-out/
 opencode.json
+.cotrex/usage.json
