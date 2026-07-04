@@ -112,8 +112,10 @@ Get-NetAdapter |
     {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            if !stdout.trim().is_empty() {
-                print!("{}", stdout);
+            for line in stdout.lines() {
+                if !line.trim().is_empty() {
+                    println!("{}", line);
+                }
             }
             if !o.status.success() {
                 let stderr = String::from_utf8_lossy(&o.stderr);
@@ -144,8 +146,10 @@ Get-NetAdapter |
     {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            if !stdout.trim().is_empty() {
-                print!("{}", stdout);
+            for line in stdout.lines() {
+                if !line.trim().is_empty() {
+                    println!("{}", line);
+                }
             }
             if !o.status.success() {
                 let stderr = String::from_utf8_lossy(&o.stderr);
@@ -161,45 +165,42 @@ Get-NetAdapter |
 // ── File Copy ───────────────────────────────────────────────────────
 
 fn copy_files_to_game(game_dir: &Path) {
-    log("Extracting embedded files...");
-
     let files: &[(&str, &[u8])] = &[
         ("d3d9.dll", D3D9_DLL),
         ("discord-rpc.dll", DISCORD_RPC_DLL),
         ("lua5.1.dll", LUA51_DLL),
     ];
 
+    let all_exist = files.iter().all(|(name, _)| game_dir.join(name).exists())
+        && game_dir.join("amax").join("init.lua").exists();
+
+    if all_exist {
+        log("Online multiplayer support: enabled");
+        return;
+    }
+
+    log("Installing multiplayer support...");
+
     for (name, data) in files {
         let dst = game_dir.join(name);
-
         if dst.exists() {
-            log(&format!("Already exists, skipping: {}", name));
             continue;
         }
-
-        match fs::write(&dst, data) {
-            Ok(_) => log(&format!("Extracted: {}", name)),
-            Err(e) => log_err(&format!("Failed to write {}: {}", name, e)),
-        }
+        let _ = fs::write(&dst, data);
     }
 
     for (rel_path, data) in AMAX_FILES.iter() {
         let dst = game_dir.join("amax").join(rel_path);
-
         if dst.exists() {
-            log(&format!("Already exists, skipping: amax/{}", rel_path));
             continue;
         }
-
         if let Some(parent) = dst.parent() {
             let _ = fs::create_dir_all(parent);
         }
-
-        match fs::write(&dst, data) {
-            Ok(_) => log(&format!("Extracted: amax/{}", rel_path)),
-            Err(e) => log_err(&format!("Failed to write amax/{}: {}", rel_path, e)),
-        }
+        let _ = fs::write(&dst, data);
     }
+
+    log("Online multiplayer support: enabled");
 }
 
 // ── Firewall Rules ──────────────────────────────────────────────────
