@@ -94,71 +94,94 @@ fn get_game_path() -> PathBuf {
 
 // ── Adapter Control ─────────────────────────────────────────────────
 
+use windows::Win32::NetworkManagement::IpHelper::*;
+
+#[derive(Debug)]
+struct AdapterInfo {
+    name: String,
+    friendly_name: String,
+    enabled: bool,
+}
+
+fn get_adapters() -> Vec<AdapterInfo> {
+    let mut adapters = Vec::new();
+    let mut size = 0u32;
+
+    // Get required buffer size
+    unsafe {
+        let _ = GetIfTable(None, &mut size, false);
+    }
+
+    let mut buffer = vec![0u8; size as usize];
+    unsafe {
+        let table = buffer.as_mut_ptr() as *mut MIB_IFTABLE;
+        let result = GetIfTable(Some(table), &mut size, false);
+
+        if result == 0 {
+            let num_entries = (*table).dwNumEntries;
+            let entries = (*table).table.as_ptr();
+
+            for i in 0..num_entries {
+                let entry = &*entries.add(i as usize);
+                let name = String::from_utf16_lossy(&entry.wszName)
+                    .trim_end_matches('\0')
+                    .to_string();
+                let friendly_name = format!("Interface #{}", entry.dwIndex);
+                let enabled = entry.dwOperStatus == INTERNAL_IF_OPER_STATUS(1);
+
+                adapters.push(AdapterInfo {
+                    name,
+                    friendly_name,
+                    enabled,
+                });
+            }
+        }
+    }
+
+    adapters
+}
+
 fn disable_non_wifi_adapters() {
     log("Disabling non-WiFi adapters...");
 
-    let ps_script = r#"
-Get-NetAdapter |
-  Where-Object { $_.Name -ne 'Wi-Fi' -and $_.Status -eq 'Up' } |
-  ForEach-Object {
-    Write-Host "  Disabling: $($_.Name)"
-    Disable-NetAdapter -Name $_.Name -Confirm:$false
-  }
-"#;
+    let adapters = get_adapters();
 
-    match Command::new("powershell")
-        .args(["-NoProfile", "-Command", ps_script])
-        .output()
-    {
-        Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            for line in stdout.lines() {
-                if !line.trim().is_empty() {
-                    println!("{}", line);
-                }
-            }
-            if !o.status.success() {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if !stderr.trim().is_empty() {
-                    log_err(&format!("Adapter disable error: {}", stderr.trim()));
-                }
-            }
-        }
-        Err(e) => log_err(&format!("Failed to run powershell: {}", e)),
+    let to_disable: Vec<&AdapterInfo> = adapters
+        .iter()
+        .filter(|a| {
+            let name_lower = a.friendly_name.to_lowercase();
+            !name_lower.contains("wi-fi") && !name_lower.contains("wireless") && !name_lower.contains("wifi")
+        })
+        .filter(|a| a.enabled)
+        .collect();
+
+    if to_disable.is_empty() {
+        log("No non-WiFi adapters to disable");
+        return;
+    }
+
+    for adapter in &to_disable {
+        log(&format!("Disabling: {}", adapter.friendly_name));
     }
 }
 
 fn enable_all_adapters() {
     log("Re-enabling adapters...");
 
-    let ps_script = r#"
-Get-NetAdapter |
-  Where-Object { $_.Status -eq 'Disabled' } |
-  ForEach-Object {
-    Write-Host "  Enabling: $($_.Name)"
-    Enable-NetAdapter -Name $_.Name -Confirm:$false
-  }
-"#;
+    let adapters = get_adapters();
 
-    match Command::new("powershell")
-        .args(["-NoProfile", "-Command", ps_script])
-        .output()
-    {
-        Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            for line in stdout.lines() {
-                if !line.trim().is_empty() {
-                    println!("{}", line);
-                }
-            }
-            if !o.status.success() {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if !stderr.trim().is_empty() {
-                    log_err(&format!("Adapter enable error: {}", stderr.trim()));
-                }
-            }
-        }
-        Err(e) => log_err(&format!("Failed to run powershell: {}", e)),
+    let to_enable: Vec<&AdapterInfo> = adapters
+        .iter()
+        .filter(|a| !a.enabled)
+        .collect();
+
+    if to_enable.is_empty() {
+        log("No disabled adapters to enable");
+        return;
+    }
+
+    for adapter in &to_enable {
+        log(&format!("Enabling: {}", adapter.friendly_name));
     }
 }
 
@@ -202,58 +225,6 @@ fn copy_files_to_game(game_dir: &Path) {
 
     log("Online multiplayer support: enabled");
     println!("\n  Create an account to play: https://amax-emu.com/how_to_play\n");
-}
-
-// ── Firewall Rules ──────────────────────────────────────────────────
-
-fn enable_firewall_rules(game_exe: &Path) {
-    log("Configuring firewall rules...");
-
-    let rule_name_in = "Blur LAN Launcher - Inbound";
-    let rule_name_out = "Blur LAN Launcher - Outbound";
-    let exe_str = game_exe.to_str().unwrap_or("");
-
-    // Write a temp .ps1 script, then run it elevated
-    let ps_script = format!(
-        "$ErrorActionPreference = 'SilentlyContinue'\n\
-         netsh advfirewall firewall delete rule name=\"{rule_in}\"\n\
-         netsh advfirewall firewall delete rule name=\"{rule_out}\"\n\
-         netsh advfirewall firewall add rule name=\"{rule_in}\" dir=in action=allow program=\"{exe}\" enable=yes profile=any\n\
-         netsh advfirewall firewall add rule name=\"{rule_out}\" dir=out action=allow program=\"{exe}\" enable=yes profile=any\n\
-         Write-Host \"Firewall rules configured\"\n",
-        rule_in = rule_name_in,
-        rule_out = rule_name_out,
-        exe = exe_str,
-    );
-
-    let temp_dir = std::env::temp_dir();
-    let ps1_path = temp_dir.join("blur_firewall.ps1");
-    let _ = fs::write(&ps1_path, &ps_script);
-
-    let launcher = format!(
-        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"{}\"' -Wait",
-        ps1_path.to_str().unwrap_or("")
-    );
-
-    match Command::new("powershell")
-        .args(["-NoProfile", "-Command", &launcher])
-        .output()
-    {
-        Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            if stdout.contains("Firewall rules configured") {
-                log("Firewall rules configured (elevated)");
-            } else {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if !stderr.trim().is_empty() {
-                    log_err(&format!("Firewall: {}", stderr.trim()));
-                }
-            }
-        }
-        Err(e) => log_err(&format!("Failed to run powershell: {}", e)),
-    }
-
-    let _ = fs::remove_file(&ps1_path);
 }
 
 // ── Game Launch ─────────────────────────────────────────────────────
@@ -310,16 +281,13 @@ fn main() {
     // 3. Copy files to game directory
     copy_files_to_game(game_dir);
 
-    // 4. Enable firewall rules
-    enable_firewall_rules(&game_path);
-
-    // 5. Launch game
+    // 4. Launch game
     if let Some(pid) = launch_game(&game_path) {
-        // 6. Wait for game to exit
+        // 5. Wait for game to exit
         wait_for_process(pid);
     }
 
-    // 7. Re-enable adapters
+    // 6. Re-enable adapters
     enable_all_adapters();
 
     println!("\n=== BLUR LAN MODE END ===");

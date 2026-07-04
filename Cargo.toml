@@ -5,6 +5,11 @@ edition = "2024"
 
 [dependencies]
 rfd = "0.15"
+windows = { version = "0.61", features = [
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+] }
 
 [build-dependencies]
 winres = "0.1"
