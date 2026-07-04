@@ -201,6 +201,7 @@ fn copy_files_to_game(game_dir: &Path) {
     }
 
     log("Online multiplayer support: enabled");
+    println!("\n  Create an account to play: https://amax-emu.com/how_to_play\n");
 }
 
 // ── Firewall Rules ──────────────────────────────────────────────────
