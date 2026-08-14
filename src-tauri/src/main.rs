@@ -238,6 +238,11 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn list_adapters() -> Result<Vec<network::AdapterInfo>, String> {
+    network::list_all_adapters()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -247,7 +252,8 @@ fn main() {
             get_saved_path,
             pick_game_path,
             start_lan_mode,
-            is_running
+            is_running,
+            list_adapters
         ])
         .run(tauri::generate_context!())
         .expect("error while running Blur LAN Launcher");

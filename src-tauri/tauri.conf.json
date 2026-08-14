@@ -13,7 +13,9 @@
         "title": "Blur // LAN Launcher",
         "width": 900,
         "height": 640,
-        "resizable": true,
+        "minWidth": 780,
+        "minHeight": 560,
+        "resizable": false,
         "center": true,
         "decorations": true,
         "transparent": false

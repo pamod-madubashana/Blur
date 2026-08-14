@@ -2,61 +2,48 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const els = {
-  pathValue: document.getElementById('path-value'),
-  browse: document.getElementById('btn-browse'),
   launch: document.getElementById('btn-launch'),
   launchLabel: document.getElementById('btn-launch-label'),
-  clear: document.getElementById('btn-clear'),
   console: document.getElementById('console'),
   badge: document.getElementById('status-badge'),
   statusLabel: document.getElementById('status-label'),
-  gaugeFill: document.getElementById('gauge-fill'),
-  gaugeStage: document.getElementById('gauge-stage'),
-  gaugeSub: document.getElementById('gauge-sub'),
-  gaugeTicks: document.getElementById('gauge-ticks'),
+  adapterList: document.getElementById('adapter-list'),
 };
 
 let gamePath = null;
 let running = false;
+let adapterPollInterval = null;
 
-const STAGES = {
-  idle:       { label: 'STANDBY',    stage: 'READY',     sub: 'select game to begin', pct: 0.02,  color: 'var(--text-lo)' },
-  disabling:  { label: 'DISABLING',  stage: 'OFFLINE',   sub: 'dropping adapters',    pct: 0.2,   color: 'var(--amber)' },
-  waiting:    { label: 'SETTLING',   stage: 'STANDBY',   sub: 'network settling',     pct: 0.35,  color: 'var(--amber)' },
-  launching:  { label: 'LAUNCHING',  stage: 'IGNITION',  sub: 'starting blur.exe',    pct: 0.55,  color: 'var(--cyan)' },
-  racing:     { label: 'RACING',     stage: 'LAN MODE',  sub: 'session in progress',  pct: 0.9,   color: 'var(--cyan)' },
-  restoring:  { label: 'RESTORING',  stage: 'RESTORE',   sub: 're-enabling network',  pct: 0.7,   color: 'var(--green)' },
+// ===== STATUS LABELS =====
+const STATUS_LABELS = {
+  idle:      'STANDBY',
+  disabling: 'DISABLING',
+  waiting:   'SETTLING',
+  launching: 'LAUNCHING',
+  racing:    'RACING',
+  restoring: 'RESTORING',
 };
 
-const CIRC = 2 * Math.PI * 100; // r=100
+// ===== ADAPTER ICONS (SVG paths) =====
+const ICONS = {
+  wifi: '<path d="M5 12.55a11 11 0 0114 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/>',
+  ethernet: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  virtual: '<rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M7 12h10M12 7v10"/>',
+};
 
-function drawTicks() {
-  const g = els.gaugeTicks;
-  const cx = 120, cy = 120, rOuter = 100, rInner = 92;
-  for (let i = 0; i < 24; i++) {
-    const angle = (i / 24) * Math.PI * 2 - Math.PI / 2;
-    const x1 = cx + rInner * Math.cos(angle);
-    const y1 = cy + rInner * Math.sin(angle);
-    const x2 = cx + rOuter * Math.cos(angle);
-    const y2 = cy + rOuter * Math.sin(angle);
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
-    g.appendChild(line);
-  }
+function adapterIcon(type) {
+  const path = ICONS[type] || ICONS.ethernet;
+  return `<svg class="adapter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 }
-drawTicks();
 
+// ===== STATUS =====
 function setStatus(state) {
-  const cfg = STAGES[state] || STAGES.idle;
+  const label = STATUS_LABELS[state] || 'STANDBY';
   els.badge.dataset.state = state;
-  els.statusLabel.textContent = cfg.label;
-  els.gaugeStage.textContent = cfg.stage;
-  els.gaugeSub.textContent = cfg.sub;
-  els.gaugeFill.style.stroke = cfg.color;
-  els.gaugeFill.style.strokeDashoffset = String(CIRC * (1 - cfg.pct));
+  els.statusLabel.textContent = label;
 }
 
+// ===== LOG =====
 function timestamp() {
   const d = new Date();
   return d.toTimeString().slice(0, 8);
@@ -68,51 +55,150 @@ function log(msg, cls = '') {
   line.className = `log-line ${cls}`.trim();
   const ts = document.createElement('span');
   ts.className = 'ts';
-  ts.textContent = timestamp();
+  ts.textContent = `[${timestamp()}]`;
+  const msgEl = document.createElement('span');
+  msgEl.className = 'msg';
+
+  if (msg.startsWith('  Copied:')) {
+    msgEl.innerHTML = `<span class="copied">${escapeHtml(msg)}</span>`;
+  } else {
+    msgEl.textContent = msg;
+  }
+
   line.appendChild(ts);
-  line.appendChild(document.createTextNode(msg));
+  line.appendChild(msgEl);
   els.console.appendChild(line);
   els.console.scrollTop = els.console.scrollHeight;
 }
 
-function shortenPath(p) {
-  if (!p) return 'No path selected';
-  const parts = p.split(/[\\/]/);
-  if (parts.length <= 3) return p;
-  return `...${parts.slice(-3).join('\\')}`;
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ===== PATH =====
 function setPath(p) {
   gamePath = p;
-  els.pathValue.textContent = shortenPath(p);
-  els.pathValue.title = p || '';
   els.launch.disabled = !p || running;
-  els.launchLabel.textContent = p ? 'START LAN MODE' : 'SELECT BLUR.EXE';
+  els.launchLabel.textContent = p ? 'LAUNCH' : 'INITIALIZE';
 }
 
 function setRunning(isRunning) {
   running = isRunning;
-  els.browse.disabled = isRunning;
   els.launch.disabled = isRunning || !gamePath;
   els.launch.classList.toggle('running', isRunning);
-  els.launchLabel.textContent = isRunning ? 'IN PROGRESS...' : (gamePath ? 'START LAN MODE' : 'SELECT BLUR.EXE');
+  els.launchLabel.textContent = isRunning ? 'STOP' : (gamePath ? 'LAUNCH' : 'INITIALIZE');
+
+  if (isRunning) {
+    startAdapterPoll();
+  } else {
+    stopAdapterPoll();
+  }
 }
 
+// ===== ADAPTERS =====
+function statusLabel(status) {
+  switch (status) {
+    case 'Up': return 'ONLINE';
+    case 'Disabled': return 'OFFLINE';
+    case 'Disabling': return 'DISABLING...';
+    case 'Enabling': return 'ENABLING...';
+    case 'Not Present': return 'N/A';
+    default: return status.toUpperCase();
+  }
+}
+
+function isLocked(name, type) {
+  return type === 'wifi' && running;
+}
+
+async function refreshAdapters() {
+  try {
+    const adapters = await invoke('list_adapters');
+    renderAdapters(adapters);
+  } catch (e) {
+    // Silently fail during polling
+  }
+}
+
+function renderAdapters(adapters) {
+  if (!adapters || adapters.length === 0) {
+    els.adapterList.innerHTML = '<div class="adapter-empty">No adapters found</div>';
+    return;
+  }
+
+  // Sort: WiFi first, then by status (Up > Disabling > Enabling > Disabled)
+  const statusOrder = { 'Up': 0, 'Disabling': 1, 'Enabling': 2, 'Disabled': 3, 'Not Present': 4 };
+  adapters.sort((a, b) => {
+    const ta = a.adapter_type === 'wifi' ? -1 : 0;
+    const tb = b.adapter_type === 'wifi' ? -1 : 0;
+    if (ta !== tb) return ta - tb;
+    return (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5);
+  });
+
+  els.adapterList.innerHTML = adapters.map(a => {
+    const locked = isLocked(a.name, a.adapter_type);
+    const isDisabling = a.status === 'Disabling';
+    const isOffline = a.status === 'Disabled' || a.status === 'Not Present';
+    const classes = [
+      'adapter-item',
+      isDisabling ? 'disabling' : '',
+      isOffline ? 'offline' : '',
+    ].filter(Boolean).join(' ');
+
+    return `<div class="${classes}" data-adapter-status="${a.status}" data-adapter-locked="${locked}">
+      <div class="adapter-left">
+        ${adapterIcon(a.adapter_type)}
+        <span class="adapter-name">${escapeHtml(a.name)}</span>
+      </div>
+      <div class="adapter-right">
+        <span class="adapter-status">${locked ? 'LOCKED' : statusLabel(a.status)}</span>
+        <div class="adapter-dot"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startAdapterPoll() {
+  if (adapterPollInterval) return;
+  refreshAdapters();
+  adapterPollInterval = setInterval(refreshAdapters, 1500);
+}
+
+function stopAdapterPoll() {
+  if (adapterPollInterval) {
+    clearInterval(adapterPollInterval);
+    adapterPollInterval = null;
+  }
+  refreshAdapters();
+}
+
+// ===== INIT =====
 async function init() {
   setStatus('idle');
-  const saved = await invoke('get_saved_path');
-  if (saved) setPath(saved);
 
-  els.browse.addEventListener('click', async () => {
+  // Load saved path; if none exists, auto-prompt file dialog
+  let saved = await invoke('get_saved_path');
+  if (saved) {
+    setPath(saved);
+    log(`Game path loaded: ${saved}`, 'system');
+  } else {
+    log('No saved game path. Opening file picker...', 'system');
     const picked = await invoke('pick_game_path');
     if (picked) {
       setPath(picked);
-      log(`Selected game: ${picked}`, 'system');
+      log(`Game selected: ${picked}`, 'system');
+    } else {
+      log('No game path selected. Launch disabled.', 'error');
     }
-  });
+  }
 
+  // Initial adapter scan
+  await refreshAdapters();
+
+  // Launch / Stop button
   els.launch.addEventListener('click', async () => {
-    if (!gamePath || running) return;
+    if (running) return;
+    if (!gamePath) return;
     setRunning(true);
     try {
       await invoke('start_lan_mode', { gamePath });
@@ -123,13 +209,16 @@ async function init() {
     }
   });
 
-  els.clear.addEventListener('click', () => {
-    els.console.innerHTML = '<div class="console-empty">Log cleared. Ready for next run.</div>';
-  });
-
+  // Listen for events from Rust backend
   await listen('log', (event) => {
     const msg = event.payload;
-    log(msg, msg.startsWith('ERROR') ? 'error' : (msg.startsWith('===') ? 'system' : ''));
+    if (msg.startsWith('ERROR')) {
+      log(msg, 'error');
+    } else if (msg.startsWith('===')) {
+      log(msg, 'system');
+    } else {
+      log(msg);
+    }
   });
 
   await listen('status', (event) => {
@@ -138,6 +227,7 @@ async function init() {
 
   await listen('finished', () => {
     setRunning(false);
+    setStatus('idle');
   });
 }
 
