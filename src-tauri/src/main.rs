@@ -204,7 +204,8 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     emit_status(app, "launching");
 
     let path_buf = PathBuf::from(game_path);
-    let work_dir = path_buf.parent().unwrap_or_else(|| PathBuf::from(".").as_path());
+    let default_dir = PathBuf::from(".");
+    let work_dir = path_buf.parent().unwrap_or(&default_dir);
 
     if let Err(e) = sync_files(app, work_dir) {
         emit_log(app, format!("File sync warning: {e}"));
