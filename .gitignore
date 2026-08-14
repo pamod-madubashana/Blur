@@ -1,10 +1,4 @@
-/target
-*.exe
-*.pdb
-blur.config
-.opencode/
-.agents/
-.graphifyignore
-graphify-out/
-opencode.json
-.cotrex/usage.json
+/src-tauri/target
+node_modules
+*.log
+.cotrex/
