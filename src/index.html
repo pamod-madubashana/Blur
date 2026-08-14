@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blur // LAN Launcher</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◈</span>
+        <div class="brand-text">
+          <span class="brand-title">BLUR</span>
+          <span class="brand-sub">LAN&nbsp;MODE&nbsp;LAUNCHER</span>
+        </div>
+      </div>
+      <div class="badge" id="status-badge" data-state="idle">
+        <span class="badge-dot"></span>
+        <span class="badge-label" id="status-label">STANDBY</span>
+      </div>
+    </header>
+
+    <section class="dash">
+      <div class="gauge-wrap">
+        <svg class="gauge" viewBox="0 0 240 240" id="gauge">
+          <circle class="gauge-track" cx="120" cy="120" r="100" />
+          <circle class="gauge-fill" cx="120" cy="120" r="100" id="gauge-fill" />
+          <g class="gauge-ticks" id="gauge-ticks"></g>
+          <text class="gauge-stage" x="120" y="112" text-anchor="middle" id="gauge-stage">READY</text>
+          <text class="gauge-sub" x="120" y="136" text-anchor="middle" id="gauge-sub">select game to begin</text>
+        </svg>
+      </div>
+
+      <div class="panel">
+        <div class="field">
+          <label class="field-label">Game executable</label>
+          <div class="path-row">
+            <span class="path-value" id="path-value">No path selected</span>
+            <button class="btn btn-ghost" id="btn-browse">Browse</button>
+          </div>
+        </div>
+
+        <button class="btn btn-launch" id="btn-launch" disabled>
+          <span class="btn-launch-icon">▶</span>
+          <span id="btn-launch-label">SELECT BLUR.EXE</span>
+        </button>
+
+        <p class="hint">
+          Disables every adapter except Wi-Fi, waits 5s, launches Blur, then restores
+          your adapters automatically once the game closes.
+        </p>
+      </div>
+    </section>
+
+    <section class="console-wrap">
+      <div class="console-head">
+        <span>SESSION LOG</span>
+        <button class="btn btn-ghost btn-small" id="btn-clear">Clear</button>
+      </div>
+      <div class="console" id="console"></div>
+    </section>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>
