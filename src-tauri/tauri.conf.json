@@ -29,9 +29,7 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "resources": [
-      { "src": "../files/**/*", "target": "files" }
-    ],
+    "resources": ["../files/**/*"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
