@@ -13,6 +13,7 @@ const els = {
 let gamePath = null;
 let running = false;
 let adapterPollInterval = null;
+let refreshingAdapters = false;
 
 // ===== STATUS LABELS =====
 const STATUS_LABELS = {
@@ -75,19 +76,14 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ===== PATH =====
-function setPath(p) {
-  gamePath = p;
-  els.launch.disabled = !p || running;
-  els.launchLabel.textContent = p ? 'LAUNCH' : 'INITIALIZE';
-}
-
+// ===== RUNNING STATE =====
 function setRunning(isRunning) {
   running = isRunning;
-  els.launch.disabled = isRunning || !gamePath;
+  els.launch.disabled = isRunning;
   els.launch.classList.toggle('running', isRunning);
-  els.launchLabel.textContent = isRunning ? 'STOP' : (gamePath ? 'LAUNCH' : 'INITIALIZE');
+  els.launchLabel.textContent = isRunning ? 'STOP' : 'START';
 
+  // Poll adapters only during enable/disable to show real-time changes
   if (isRunning) {
     startAdapterPoll();
   } else {
@@ -96,15 +92,12 @@ function setRunning(isRunning) {
 }
 
 // ===== ADAPTERS =====
-function statusLabel(status) {
-  switch (status) {
-    case 'Up': return 'ONLINE';
-    case 'Disabled': return 'OFFLINE';
-    case 'Disabling': return 'DISABLING...';
-    case 'Enabling': return 'ENABLING...';
-    case 'Not Present': return 'N/A';
-    default: return status.toUpperCase();
-  }
+function statusLabel(status, type) {
+  // Only WiFi (internet-connected) shows ONLINE
+  if (status === 'Up' && type === 'wifi') return 'ONLINE';
+  // All others: just enabled or disabled
+  if (status === 'Disabled' || status === 'Not Present') return 'DISABLED';
+  return 'ENABLED';
 }
 
 function isLocked(name, type) {
@@ -112,11 +105,16 @@ function isLocked(name, type) {
 }
 
 async function refreshAdapters() {
+  // Prevent concurrent calls from stacking
+  if (refreshingAdapters) return;
+  refreshingAdapters = true;
   try {
     const adapters = await invoke('list_adapters');
     renderAdapters(adapters);
   } catch (e) {
     // Silently fail during polling
+  } finally {
+    refreshingAdapters = false;
   }
 }
 
@@ -126,7 +124,6 @@ function renderAdapters(adapters) {
     return;
   }
 
-  // Sort: WiFi first, then by status (Up > Disabling > Enabling > Disabled)
   const statusOrder = { 'Up': 0, 'Disabling': 1, 'Enabling': 2, 'Disabled': 3, 'Not Present': 4 };
   adapters.sort((a, b) => {
     const ta = a.adapter_type === 'wifi' ? -1 : 0;
@@ -145,13 +142,13 @@ function renderAdapters(adapters) {
       isOffline ? 'offline' : '',
     ].filter(Boolean).join(' ');
 
-    return `<div class="${classes}" data-adapter-status="${a.status}" data-adapter-locked="${locked}">
+    return `<div class="${classes}" data-adapter-status="${a.status}" data-adapter-type="${a.adapter_type}" data-adapter-locked="${locked}">
       <div class="adapter-left">
         ${adapterIcon(a.adapter_type)}
         <span class="adapter-name">${escapeHtml(a.name)}</span>
       </div>
       <div class="adapter-right">
-        <span class="adapter-status">${locked ? 'LOCKED' : statusLabel(a.status)}</span>
+        <span class="adapter-status">${locked ? 'LOCKED' : statusLabel(a.status, a.adapter_type)}</span>
         <div class="adapter-dot"></div>
       </div>
     </div>`;
@@ -161,7 +158,7 @@ function renderAdapters(adapters) {
 function startAdapterPoll() {
   if (adapterPollInterval) return;
   refreshAdapters();
-  adapterPollInterval = setInterval(refreshAdapters, 1500);
+  adapterPollInterval = setInterval(refreshAdapters, 2000);
 }
 
 function stopAdapterPoll() {
@@ -169,36 +166,39 @@ function stopAdapterPoll() {
     clearInterval(adapterPollInterval);
     adapterPollInterval = null;
   }
-  refreshAdapters();
 }
 
 // ===== INIT =====
 async function init() {
   setStatus('idle');
 
-  // Load saved path; if none exists, auto-prompt file dialog
-  let saved = await invoke('get_saved_path');
+  // Silently load saved path (no prompt on startup)
+  const saved = await invoke('get_saved_path');
   if (saved) {
-    setPath(saved);
+    gamePath = saved;
     log(`Game path loaded: ${saved}`, 'system');
-  } else {
-    log('No saved game path. Opening file picker...', 'system');
-    const picked = await invoke('pick_game_path');
-    if (picked) {
-      setPath(picked);
-      log(`Game selected: ${picked}`, 'system');
-    } else {
-      log('No game path selected. Launch disabled.', 'error');
-    }
   }
 
-  // Initial adapter scan
+  // Initial adapter scan (one-time, no polling)
   await refreshAdapters();
 
-  // Launch / Stop button
+  // START / STOP button
   els.launch.addEventListener('click', async () => {
     if (running) return;
-    if (!gamePath) return;
+
+    // Check for game path; prompt file picker if missing
+    if (!gamePath) {
+      log('No saved game path. Opening file picker...', 'system');
+      const picked = await invoke('pick_game_path');
+      if (picked) {
+        gamePath = picked;
+        log(`Game selected: ${picked}`, 'system');
+      } else {
+        log('No game selected. Aborting launch.', 'error');
+        return;
+      }
+    }
+
     setRunning(true);
     try {
       await invoke('start_lan_mode', { gamePath });
@@ -228,6 +228,8 @@ async function init() {
   await listen('finished', () => {
     setRunning(false);
     setStatus('idle');
+    // Final refresh after adapters restored
+    refreshAdapters();
   });
 }
 

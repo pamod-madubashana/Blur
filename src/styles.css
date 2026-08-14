@@ -334,19 +334,24 @@ body {
 }
 
 /* Adapter status colors */
-.adapter-item[data-adapter-status="Up"] .adapter-status { color: var(--primary-container); }
-.adapter-item[data-adapter-status="Up"] .adapter-dot { background: var(--primary-container); box-shadow: 0 0 8px var(--primary-container); animation: pulse-dot 2s infinite; }
+/* WiFi Online = cyan glow */
+.adapter-item[data-adapter-status="Up"][data-adapter-type="wifi"] .adapter-status { color: var(--primary-container); }
+.adapter-item[data-adapter-status="Up"][data-adapter-type="wifi"] .adapter-dot { background: var(--primary-container); box-shadow: 0 0 8px var(--primary-container); animation: pulse-dot 2s infinite; }
 
-.adapter-item[data-adapter-status="Disabling"] .adapter-status { color: var(--error); }
-.adapter-item[data-adapter-status="Disabling"] .adapter-dot { background: var(--error); box-shadow: 0 0 8px var(--error); animation: pulse-dot 0.6s infinite; }
+/* Non-WiFi Up = green (enabled) */
+.adapter-item[data-adapter-status="Up"]:not([data-adapter-type="wifi"]) .adapter-status { color: #4ee08a; }
+.adapter-item[data-adapter-status="Up"]:not([data-adapter-type="wifi"]) .adapter-dot { background: #4ee08a; box-shadow: 0 0 8px #4ee08a; }
 
-.adapter-item[data-adapter-status="Enabling"] .adapter-status { color: #4ee08a; }
-.adapter-item[data-adapter-status="Enabling"] .adapter-dot { background: #4ee08a; box-shadow: 0 0 8px #4ee08a; animation: pulse-dot 0.8s infinite; }
+/* Disabling / Enabling = amber (transient) */
+.adapter-item[data-adapter-status="Disabling"] .adapter-status,
+.adapter-item[data-adapter-status="Enabling"] .adapter-status { color: #ffb4ab; }
+.adapter-item[data-adapter-status="Disabling"] .adapter-dot,
+.adapter-item[data-adapter-status="Enabling"] .adapter-dot { background: #ffb4ab; box-shadow: 0 0 6px #ffb4ab; animation: pulse-dot 0.8s infinite; }
 
-.adapter-item[data-adapter-status="Disabled"] .adapter-status { color: var(--outline); }
-.adapter-item[data-adapter-status="Disabled"] .adapter-dot { background: var(--outline); }
-
+/* Disabled / Not Present = dim gray */
+.adapter-item[data-adapter-status="Disabled"] .adapter-status,
 .adapter-item[data-adapter-status="Not Present"] .adapter-status { color: var(--outline); }
+.adapter-item[data-adapter-status="Disabled"] .adapter-dot,
 .adapter-item[data-adapter-status="Not Present"] .adapter-dot { background: var(--outline); }
 
 /* WiFi LOCKED special */

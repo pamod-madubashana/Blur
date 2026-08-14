@@ -185,15 +185,22 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     emit_status(app, "disabling");
     emit_log(app, "=== BLUR LAN MODE START ===");
 
-    emit_log(app, "Disabling non-WiFi adapters...");
-    let adapters = network::list_non_wifi_up()?;
-    if adapters.is_empty() {
+    emit_log(app, "Scanning for non-WiFi adapters to disable...");
+    let disabled_by_us = network::list_non_wifi_up()?;
+    if disabled_by_us.is_empty() {
         emit_log(app, "No non-WiFi adapters were up.");
+    } else {
+        emit_log(app, format!("Found {} adapter(s) to disable.", disabled_by_us.len()));
     }
-    for name in &adapters {
+    let mut successfully_disabled: Vec<String> = Vec::new();
+    for name in &disabled_by_us {
         emit_log(app, format!("Disabling: {name}"));
-        if let Err(e) = network::disable_adapter(name) {
-            emit_log(app, format!("  -> failed: {e}"));
+        match network::disable_adapter(name) {
+            Ok(()) => {
+                emit_log(app, format!("  -> OK"));
+                successfully_disabled.push(name.clone());
+            }
+            Err(e) => emit_log(app, format!("  -> failed: {e}")),
         }
     }
 
@@ -213,29 +220,50 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
 
     emit_log(app, "Launching Blur...");
 
-    let mut cmd = Command::new(&path_buf);
-    cmd.current_dir(work_dir);
-    // Game is launched normally (visible window) — no creation flags needed here.
+    let launch_result = Command::new(&path_buf)
+        .current_dir(work_dir)
+        .spawn();
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to launch game: {e}"))?;
-    emit_log(app, format!("Game PID: {}", child.id()));
-
-    emit_status(app, "racing");
-    emit_log(app, "Waiting for game to close...");
-    let _ = child.wait();
-
-    emit_status(app, "restoring");
-    emit_log(app, "Re-enabling adapters...");
-    let disabled = network::list_disabled().unwrap_or_default();
-    for name in &disabled {
-        emit_log(app, format!("Enabling: {name}"));
-        if let Err(e) = network::enable_adapter(name) {
-            emit_log(app, format!("  -> failed: {e}"));
+    match launch_result {
+        Ok(mut child) => {
+            emit_log(app, format!("Game PID: {}", child.id()));
+            emit_status(app, "racing");
+            emit_log(app, "Waiting for game to close...");
+            let _ = child.wait();
+            emit_log(app, "Game process exited.");
+        }
+        Err(e) => {
+            emit_log(app, format!("ERROR: Failed to launch game: {e}"));
         }
     }
 
+    // Brief pause to let the system settle after game closes
+    emit_log(app, "Waiting 2 seconds before restoring adapters...");
+    thread::sleep(Duration::from_secs(2));
+
+    // Always restore adapters we disabled, even if game failed to launch
+    restore_adapters(app, &successfully_disabled);
+
     emit_log(app, "=== BLUR LAN MODE END ===");
     Ok(())
+}
+
+/// Re-enables only the adapters that were disabled by this app.
+fn restore_adapters(app: &AppHandle, adapters: &[String]) {
+    emit_status(app, "restoring");
+    if adapters.is_empty() {
+        emit_log(app, "No adapters to restore.");
+        return;
+    }
+    emit_log(app, format!("Restoring {} adapter(s)...", adapters.len()));
+    for name in adapters {
+        emit_log(app, format!("Enabling: {name}"));
+        match network::enable_adapter(name) {
+            Ok(()) => emit_log(app, format!("  -> OK")),
+            Err(e) => emit_log(app, format!("  -> failed: {e}")),
+        }
+    }
+    emit_log(app, "All adapters restored.");
 }
 
 #[tauri::command]

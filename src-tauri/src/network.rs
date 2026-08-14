@@ -40,14 +40,6 @@ pub fn list_non_wifi_up() -> Result<Vec<String>, String> {
     Ok(out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
 }
 
-/// Returns the names of currently disabled adapters.
-pub fn list_disabled() -> Result<Vec<String>, String> {
-    let out = run_ps(
-        "Get-NetAdapter | Where-Object { $_.Status -eq 'Disabled' } | Select-Object -ExpandProperty Name",
-    )?;
-    Ok(out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-}
-
 pub fn disable_adapter(name: &str) -> Result<(), String> {
     let script = format!("Disable-NetAdapter -Name '{}' -Confirm:$false", name.replace('\'', "''"));
     run_ps(&script)?;
