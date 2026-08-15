@@ -22,6 +22,8 @@ struct AppState {
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
     game_path: Option<String>,
+    #[serde(default)]
+    files_synced: bool,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -101,16 +103,14 @@ fn sync_files(app: &AppHandle, game_dir: &Path) -> Result<(), String> {
                 } else {
                     let rel = path.strip_prefix(base).unwrap_or(&path);
                     let dest = game_dir.join(rel);
-                    if !dest.exists() {
-                        if let Some(parent) = dest.parent() {
-                            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                        }
-                        fs::copy(&path, &dest).map_err(|e| {
-                            format!("Failed to copy {}: {e}", path.display())
-                        })?;
-                        emit_log(app, format!("  Copied: {}", rel.display()));
-                        copied += 1;
+                    if let Some(parent) = dest.parent() {
+                        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                     }
+                    fs::copy(&path, &dest).map_err(|e| {
+                        format!("Failed to copy {}: {e}", path.display())
+                    })?;
+                    emit_log(app, format!("  Copied: {}", rel.display()));
+                    copied += 1;
                 }
             }
         }
@@ -119,7 +119,7 @@ fn sync_files(app: &AppHandle, game_dir: &Path) -> Result<(), String> {
 
     let count = walk_and_copy(app, &src_files, game_dir, &src_files)?;
     if count == 0 {
-        emit_log(app, "All required files are present.");
+        emit_log(app, "Online fix files are fine.");
     } else {
         emit_log(app, format!("Copied {count} missing file(s) to game directory."));
     }
@@ -147,7 +147,7 @@ async fn pick_game_path(app: AppHandle) -> Option<String> {
 
     if let Some(path) = file {
         let path_str = path.to_string();
-        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()) });
+        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()), files_synced: false });
         Some(path_str)
     } else {
         None
@@ -182,9 +182,24 @@ fn start_lan_mode(app: AppHandle, state: State<AppState>, game_path: String) -> 
 }
 
 fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
-    emit_status(app, "disabling");
     emit_log(app, "=== BLUR LAN MODE START ===");
 
+    let path_buf = PathBuf::from(game_path);
+    let default_dir = PathBuf::from(".");
+    let work_dir = path_buf.parent().unwrap_or(&default_dir);
+
+    let mut cfg = load_config(app);
+    if cfg.files_synced {
+        emit_log(app, "Online fix files are fine.");
+    } else {
+        if let Err(e) = sync_files(app, work_dir) {
+            emit_log(app, format!("File sync warning: {e}"));
+        }
+        cfg.files_synced = true;
+        let _ = save_config(app, &cfg);
+    }
+
+    emit_status(app, "disabling");
     emit_log(app, "Scanning for non-WiFi adapters to disable...");
     let disabled_by_us = network::list_non_wifi_up()?;
     if disabled_by_us.is_empty() {
@@ -209,15 +224,6 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     thread::sleep(Duration::from_secs(5));
 
     emit_status(app, "launching");
-
-    let path_buf = PathBuf::from(game_path);
-    let default_dir = PathBuf::from(".");
-    let work_dir = path_buf.parent().unwrap_or(&default_dir);
-
-    if let Err(e) = sync_files(app, work_dir) {
-        emit_log(app, format!("File sync warning: {e}"));
-    }
-
     emit_log(app, "Launching Blur...");
 
     let launch_result = Command::new(&path_buf)

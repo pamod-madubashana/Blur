@@ -32,10 +32,10 @@ fn run_ps(script: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Returns the names of "up" adapters other than Wi-Fi.
+/// Returns the names of "up" adapters other than Wi-Fi and Bluetooth.
 pub fn list_non_wifi_up() -> Result<Vec<String>, String> {
     let out = run_ps(
-        "Get-NetAdapter | Where-Object { $_.Name -ne 'Wi-Fi' -and $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name",
+        "Get-NetAdapter | Where-Object { $_.InterfaceDescription -notmatch 'Wi-Fi|Wireless|Bluetooth' -and $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name",
     )?;
     Ok(out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
 }
@@ -77,6 +77,7 @@ pub fn list_all_adapters() -> Result<Vec<AdapterInfo>, String> {
             let adapter_type = classify_adapter(&name, iface);
             AdapterInfo { name, status, adapter_type }
         })
+        .filter(|a| a.adapter_type != "bluetooth")
         .collect())
 }
 
@@ -84,6 +85,8 @@ fn classify_adapter(name: &str, iface: &str) -> String {
     let combined = format!("{name} {iface}").to_lowercase();
     if combined.contains("wi-fi") || combined.contains("wifi") || combined.contains("wireless") {
         "wifi".to_string()
+    } else if combined.contains("bluetooth") {
+        "bluetooth".to_string()
     } else if combined.contains("virtual") || combined.contains("bridge") || combined.contains("hyper-v") || combined.contains("vpn") {
         "virtual".to_string()
     } else {
