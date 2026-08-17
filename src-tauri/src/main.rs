@@ -1,11 +1,10 @@
-// Prevents an additional console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod network;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,8 +21,6 @@ struct AppState {
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
     game_path: Option<String>,
-    #[serde(default)]
-    files_synced: bool,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -60,71 +57,21 @@ fn emit_status(app: &AppHandle, status: &str) {
     let _ = app.emit("status", status.to_string());
 }
 
-/// Ensures that bundled files from `files/` exist in the game directory.
-/// Copies any missing files or directories. Skips .gitkeep files.
-fn sync_files(app: &AppHandle, game_dir: &Path) -> Result<(), String> {
-    // Try bundled resource dir first; fall back to CWD for dev mode
-    let src_files = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|d| d.join("files"))
-        .filter(|d| d.exists())
-        .or_else(|| {
-            std::env::current_dir()
-                .ok()
-                .map(|d| d.join("files"))
-                .filter(|d| d.exists())
-        })
-        .ok_or("Could not locate bundled files/ directory")?;
+#[derive(Serialize, Clone)]
+struct AdapterProgressPayload {
+    name: String,
+    phase: String,
+}
 
-    emit_log(app, "Checking required game files...");
+fn emit_adapter_progress(app: &AppHandle, name: &str, phase: &str) {
+    let _ = app.emit("adapter_progress", AdapterProgressPayload {
+        name: name.to_string(),
+        phase: phase.to_string(),
+    });
+}
 
-    fn walk_and_copy(
-        app: &AppHandle,
-        src: &Path,
-        game_dir: &Path,
-        base: &Path,
-    ) -> Result<u32, String> {
-        let mut copied = 0u32;
-        if src.is_dir() {
-            for entry in fs::read_dir(src).map_err(|e| format!("Failed to read {}: {e}", src.display()))? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                let name = entry.file_name();
-                let path = entry.path();
-
-                // Skip .gitkeep
-                if name.to_string_lossy() == ".gitkeep" {
-                    continue;
-                }
-
-                if path.is_dir() {
-                    copied += walk_and_copy(app, &path, game_dir, base)?;
-                } else {
-                    let rel = path.strip_prefix(base).unwrap_or(&path);
-                    let dest = game_dir.join(rel);
-                    if let Some(parent) = dest.parent() {
-                        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                    }
-                    fs::copy(&path, &dest).map_err(|e| {
-                        format!("Failed to copy {}: {e}", path.display())
-                    })?;
-                    emit_log(app, format!("  Copied: {}", rel.display()));
-                    copied += 1;
-                }
-            }
-        }
-        Ok(copied)
-    }
-
-    let count = walk_and_copy(app, &src_files, game_dir, &src_files)?;
-    if count == 0 {
-        emit_log(app, "Online fix files are fine.");
-    } else {
-        emit_log(app, format!("Copied {count} missing file(s) to game directory."));
-    }
-
-    Ok(())
+fn emit_adapters_list(app: &AppHandle, adapters: &[String]) {
+    let _ = app.emit("adapters", adapters.to_vec());
 }
 
 #[tauri::command]
@@ -147,7 +94,7 @@ async fn pick_game_path(app: AppHandle) -> Option<String> {
 
     if let Some(path) = file {
         let path_str = path.to_string();
-        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()), files_synced: false });
+        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()) });
         Some(path_str)
     } else {
         None
@@ -188,34 +135,28 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     let default_dir = PathBuf::from(".");
     let work_dir = path_buf.parent().unwrap_or(&default_dir);
 
-    let mut cfg = load_config(app);
-    if cfg.files_synced {
-        emit_log(app, "Online fix files are fine.");
+    // Disable virtual adapters (VMware, VirtualBox, etc.)
+    emit_log(app, "Scanning for virtual adapters to disable...");
+    let all_virtual = network::list_virtual_adapters()?;
+    if all_virtual.is_empty() {
+        emit_log(app, "No virtual adapters found.");
     } else {
-        if let Err(e) = sync_files(app, work_dir) {
-            emit_log(app, format!("File sync warning: {e}"));
-        }
-        cfg.files_synced = true;
-        let _ = save_config(app, &cfg);
+        emit_log(app, format!("Found {} virtual adapter(s) to disable.", all_virtual.len()));
     }
-
+    emit_adapters_list(app, &all_virtual);
     emit_status(app, "disabling");
-    emit_log(app, "Scanning for non-WiFi adapters to disable...");
-    let disabled_by_us = network::list_non_wifi_up()?;
-    if disabled_by_us.is_empty() {
-        emit_log(app, "No non-WiFi adapters were up.");
-    } else {
-        emit_log(app, format!("Found {} adapter(s) to disable.", disabled_by_us.len()));
-    }
-    let mut successfully_disabled: Vec<String> = Vec::new();
-    for name in &disabled_by_us {
+    for name in &all_virtual {
+        emit_adapter_progress(app, name, "processing");
         emit_log(app, format!("Disabling: {name}"));
         match network::disable_adapter(name) {
             Ok(()) => {
-                emit_log(app, format!("  -> OK"));
-                successfully_disabled.push(name.clone());
+                emit_log(app, "  -> OK".to_string());
+                emit_adapter_progress(app, name, "done");
             }
-            Err(e) => emit_log(app, format!("  -> failed: {e}")),
+            Err(e) => {
+                emit_log(app, format!("  -> failed: {e}"));
+                emit_adapter_progress(app, name, "failed");
+            }
         }
     }
 
@@ -243,19 +184,18 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
         }
     }
 
-    // Brief pause to let the system settle after game closes
     emit_log(app, "Waiting 2 seconds before restoring adapters...");
     thread::sleep(Duration::from_secs(2));
 
-    // Always restore adapters we disabled, even if game failed to launch
-    restore_adapters(app, &successfully_disabled);
+    // Restore all virtual adapters
+    restore_adapters(app, &all_virtual);
 
     emit_log(app, "=== BLUR LAN MODE END ===");
     Ok(())
 }
 
-/// Re-enables only the adapters that were disabled by this app.
 fn restore_adapters(app: &AppHandle, adapters: &[String]) {
+    emit_adapters_list(app, adapters);
     emit_status(app, "restoring");
     if adapters.is_empty() {
         emit_log(app, "No adapters to restore.");
@@ -263,18 +203,52 @@ fn restore_adapters(app: &AppHandle, adapters: &[String]) {
     }
     emit_log(app, format!("Restoring {} adapter(s)...", adapters.len()));
     for name in adapters {
+        emit_adapter_progress(app, name, "processing");
         emit_log(app, format!("Enabling: {name}"));
         match network::enable_adapter(name) {
-            Ok(()) => emit_log(app, format!("  -> OK")),
-            Err(e) => emit_log(app, format!("  -> failed: {e}")),
+            Ok(()) => {
+                emit_log(app, "  -> OK".to_string());
+                emit_adapter_progress(app, name, "done");
+            }
+            Err(e) => {
+                emit_log(app, format!("  -> failed: {e}"));
+                emit_adapter_progress(app, name, "failed");
+            }
         }
     }
     emit_log(app, "All adapters restored.");
 }
 
 #[tauri::command]
-fn list_adapters() -> Result<Vec<network::AdapterInfo>, String> {
-    network::list_all_adapters()
+fn list_adapters(app: AppHandle) -> Result<Vec<network::AdapterInfo>, String> {
+    let adapters = network::list_all_adapters()?;
+    emit_log(&app, format!("list_adapters: found {} adapter(s)", adapters.len()));
+    for a in &adapters {
+        emit_log(&app, format!("  - {} [{}] ({})", a.name, a.status, a.adapter_type));
+    }
+    Ok(adapters)
+}
+
+#[tauri::command]
+fn disable_adapter(name: String) -> Result<(), String> {
+    eprintln!("[ipc] disable_adapter called: '{name}'");
+    let result = network::disable_adapter(&name);
+    match &result {
+        Ok(()) => eprintln!("[ipc] disable_adapter: '{name}' OK"),
+        Err(e) => eprintln!("[ipc] disable_adapter: '{name}' FAILED - {e}"),
+    }
+    result
+}
+
+#[tauri::command]
+fn enable_adapter(name: String) -> Result<(), String> {
+    eprintln!("[ipc] enable_adapter called: '{name}'");
+    let result = network::enable_adapter(&name);
+    match &result {
+        Ok(()) => eprintln!("[ipc] enable_adapter: '{name}' OK"),
+        Err(e) => eprintln!("[ipc] enable_adapter: '{name}' FAILED - {e}"),
+    }
+    result
 }
 
 fn main() {
@@ -287,7 +261,9 @@ fn main() {
             pick_game_path,
             start_lan_mode,
             is_running,
-            list_adapters
+            list_adapters,
+            disable_adapter,
+            enable_adapter
         ])
         .run(tauri::generate_context!())
         .expect("error while running Blur LAN Launcher");

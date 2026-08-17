@@ -1,10 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Blur LAN Launcher",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.blurlan.launcher",
   "build": {
-    "frontendDist": "../src"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
   },
   "app": {
     "withGlobalTauri": true,
@@ -35,6 +38,9 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "perMachine"
       }
     }
   }
