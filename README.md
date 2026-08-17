@@ -5,13 +5,13 @@
 <h1 align="center">Blur Launcher</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB.svg" alt="Tauri">
-  <img src="https://img.shields.io/badge/Rust-2021-DEA584.svg" alt="Rust">
-  <img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React">
-  <img src="https://img.shields.io/badge/TypeScript-5-3178c6.svg" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Vite-6-646CFF.svg" alt="Vite">
-  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4.svg" alt="Tailwind CSS">
-  <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
+  <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri">
+  <img src="https://img.shields.io/badge/Rust-2021-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/License-MIT-00C853?style=flat-square" alt="License">
 </p>
 
 <p align="center">Disable virtual network adapters, launch Blur in LAN mode, and restore adapters automatically when the game exits.</p>
