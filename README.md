@@ -1,90 +1,59 @@
-# Blur // LAN Launcher
+<h1 align="center">Blur — LAN Mode Launcher</h1>
 
-A small Tauri desktop app that wraps the "disable non-Wi-Fi adapters → launch Blur →
-restore adapters" workflow in a proper UI, instead of a raw PowerShell window.
+<p align="center">
+  <img src="https://img.shields.io/badge/Tauri-2-24C8DB.svg" alt="Tauri">
+  <img src="https://img.shields.io/badge/Rust-2021-DEA584.svg" alt="Rust">
+  <img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178c6.svg" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Vite-6-646CFF.svg" alt="Vite">
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4.svg" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
+</p>
 
-It does exactly what your original `.ps1` did:
-1. Disables every network adapter except `Wi-Fi` that is currently `Up`.
-2. Waits 5 seconds.
-3. Launches `Blur.exe` and waits for it to close.
-4. Re-enables every adapter it disabled.
+<p align="center">Disable virtual network adapters, launch Blur in LAN mode, and restore adapters automatically when the game exits.</p>
 
-The game path is remembered between runs (stored in your app-data folder), and every
-step is streamed live into an on-screen console instead of a console window.
-
-## Project layout
+## Project Structure
 
 ```
-blur-lan-launcher/
-├─ src/                     # frontend (vanilla HTML/CSS/JS, no build step)
-│  ├─ index.html
-│  ├─ styles.css
-│  └─ main.js
-└─ src-tauri/                # Rust backend
-   ├─ Cargo.toml
-   ├─ tauri.conf.json
-   ├─ build.rs
-   ├─ icons/                 # placeholder app icons — swap for your own art
-   └─ src/
-      ├─ main.rs             # commands, config persistence, launch sequence
-      └─ network.rs          # PowerShell-backed adapter enable/disable
+Blur/
+├── src-tauri/            # Rust backend (Tauri 2)
+│   ├── src/
+│   │   ├── main.rs       # IPC commands, tray, window management
+│   │   └── network.rs    # WMI adapter disable/enable
+│   ├── build.rs          # Admin manifest embedding
+│   └── tauri.conf.json   # App config, window, bundle settings
+├── src/                  # React frontend
+│   ├── components/       # UI components (BlurControl, modals)
+│   ├── hooks/            # State machine, event listeners
+│   ├── services/         # IPC adapter service
+│   └── types/            # TypeScript types
+├── .github/workflows/    # Windows release workflow
+└── package.json
 ```
 
-## Prerequisites (Windows, since this drives `Disable-NetAdapter`)
+## Quick Start
 
-- [Rust](https://rustup.rs) (stable toolchain)
-- [Node.js](https://nodejs.org) 18+ (only needed for the Tauri CLI)
-- Tauri v2 CLI: `cargo install tauri-cli --version "^2"`
-- Microsoft Visual Studio C++ Build Tools (the Tauri prerequisite installer will
-  prompt you if missing — see https://v2.tauri.app/start/prerequisites/)
+```bash
+# Install dependencies
+npm install
 
-## Run it in dev mode
+# Run in dev mode
+npm run tauri dev
 
-```powershell
-cd blur-lan-launcher
-cargo tauri dev
+# Build for production
+npm run tauri build
 ```
 
-This opens the app in a live-reloading window. Because `Disable-NetAdapter` /
-`Enable-NetAdapter` need administrator rights, **launch your terminal as
-Administrator** before running this, or the disable/enable steps will fail with an
-"Access is denied" error (the app will still run and log the failure — it just
-won't touch the adapters).
+## How It Works
 
-## Build a distributable .exe / installer
+1. Detects virtual network adapters (VMware, VirtualBox, etc.) via WMI
+2. Disables them to isolate the network for LAN play
+3. Launches Blur with the game executable
+4. Waits for the game process to exit
+5. Restores all disabled adapters automatically
 
-```powershell
-cd blur-lan-launcher
-cargo tauri build
-```
+The app runs as a system tray application — compact, always on top, and positioned at the bottom-right corner.
 
-The installer (NSIS `.exe`) lands in
-`src-tauri/target/release/bundle/nsis/`. Because the app calls network-adapter
-cmdlets, tell users to **right-click → Run as administrator** the first time (or
-set "Run this program as an administrator" on the shortcut's Compatibility tab so
-they don't have to do it every time).
+## License
 
-## Notes / things you may want to tweak
-
-- **Icons**: `src-tauri/icons/` currently has placeholder art (a simple asphalt
-  square with a cyan ring). Regenerate real ones with
-  `cargo tauri icon path/to/your-artwork.png`.
-- **Admin elevation**: right now the app doesn't self-elevate. If you want it to
-  prompt for UAC automatically on launch, add a `manifest` requesting
-  `requireAdministrator` via `tauri-plugin-window-state`/a custom `.exe.manifest`,
-  or simply ship the shortcut pre-configured to run as admin.
-- **Multiple non-Wi-Fi adapters**: the app disables *all* of them (matching your
-  original script), then only re-enables whatever it finds in a `Disabled` state
-  afterward — same behavior as the source script.
-- **If the game crashes hard** (not just closed normally) `Wait-Process`/`child.wait()`
-  still returns once the process exits, so adapters get restored either way.
-- **Config file** lives at `%APPDATA%/com.blurlan.launcher/blur-lan-launcher.config.json`.
-  Delete it if you want the app to ask for the `.exe` path again.
-
-## UI overview
-
-- **Gauge** in the top-left tracks the current stage (standby → disabling →
-  settling → ignition → LAN mode → restore) with color shifting from amber
-  (network changes) to cyan (game running) to green (restoring).
-- **Session log** at the bottom mirrors every line the original script printed to
-  the console, timestamped.
+MIT License - see [LICENSE](LICENSE) for details.
