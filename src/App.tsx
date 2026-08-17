@@ -3,13 +3,15 @@ import { CyberBackground } from "@/components/CyberBackground";
 import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
 import { FileCheckModal } from "@/components/FileCheckModal";
+import { FirewallCheckModal } from "@/components/FirewallCheckModal";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, overall, completed, closing, activate } =
     useBlurMachine();
 
   const running = state === "running" || state === "enabling";
+  const firewallModalOpen = state === "checking" && fileCheckDone && !firewallCheckDone;
 
   return (
     <main
@@ -35,8 +37,12 @@ export default function App() {
         <span>v1.0</span>
       </footer>
 
-      {fileCheckModalOpen && (
+      {fileCheckModalOpen && !fileCheckDone && (
         <FileCheckModal items={fileItems} done={fileCheckDone} closing={closing} />
+      )}
+
+      {firewallModalOpen && (
+        <FirewallCheckModal items={firewallItems} done={firewallCheckDone} closing={closing} />
       )}
 
       {adapterModalOpen && (

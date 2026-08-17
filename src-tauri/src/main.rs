@@ -113,6 +113,23 @@ fn emit_file_check_done(app: &AppHandle, all_ok: bool) {
     let _ = app.emit("file_check_done", all_ok);
 }
 
+#[derive(Clone, serde::Serialize)]
+struct FirewallCheckPayload {
+    rule: String,
+    status: String,
+}
+
+fn emit_firewall_check(app: &AppHandle, rule: &str, status: &str) {
+    let _ = app.emit("firewall_check", FirewallCheckPayload {
+        rule: rule.to_string(),
+        status: status.to_string(),
+    });
+}
+
+fn emit_firewall_check_done(app: &AppHandle) {
+    let _ = app.emit("firewall_check_done", ());
+}
+
 fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
     // In dev mode, files/ is relative to CWD; in bundled mode, it's in the resource dir
     let dev_path = PathBuf::from("files");
@@ -188,8 +205,10 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.contains("Rule Name") {
         emit_log(app, "  Inbound rule: OK");
+        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "ok");
     } else {
         emit_log(app, "  Inbound rule: MISSING - creating...");
+        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "creating");
         let _ = Command::new("netsh")
             .args([
                 "advfirewall", "firewall", "add", "rule",
@@ -200,6 +219,7 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         emit_log(app, "  Inbound rule: CREATED");
+        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "created");
     }
 
     // Check if Blur outbound rule exists
@@ -212,8 +232,10 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.contains("Rule Name") {
         emit_log(app, "  Outbound rule: OK");
+        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "ok");
     } else {
         emit_log(app, "  Outbound rule: MISSING - creating...");
+        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "creating");
         let _ = Command::new("netsh")
             .args([
                 "advfirewall", "firewall", "add", "rule",
@@ -224,10 +246,12 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         emit_log(app, "  Outbound rule: CREATED");
+        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "created");
     }
 
     // Enable all ICMPv4 rules
     emit_log(app, "Enabling ICMPv4 rules...");
+    emit_firewall_check(app, "ICMPv4 Rules", "checking");
     let icmp_names = [
         "Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)",
         "Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)",
@@ -256,8 +280,10 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
             }
         }
     }
+    emit_firewall_check(app, "ICMPv4 Rules", "ok");
 
     emit_log(app, "Firewall check complete.");
+    emit_firewall_check_done(app);
     Ok(())
 }
 
@@ -327,6 +353,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     check_and_copy_files(app, &work_dir.to_string_lossy())?;
 
     // Check and enable firewall rules
+    emit_status(app, "firewall");
     check_firewall_rules(app)?;
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)

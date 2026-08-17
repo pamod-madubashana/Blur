@@ -9,6 +9,11 @@ export interface FileCheckItem {
   status: "ok" | "copying" | "copied";
 }
 
+export interface FirewallCheckItem {
+  rule: string;
+  status: "ok" | "creating" | "created" | "checking";
+}
+
 export function useBlurMachine() {
   const [state, setState] = useState<AppState>("ready");
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
@@ -17,6 +22,8 @@ export function useBlurMachine() {
   const [closing, setClosing] = useState(false);
   const [fileItems, setFileItems] = useState<FileCheckItem[]>([]);
   const [fileCheckDone, setFileCheckDone] = useState(false);
+  const [firewallItems, setFirewallItems] = useState<FirewallCheckItem[]>([]);
+  const [firewallCheckDone, setFirewallCheckDone] = useState(false);
   const busy = useRef(false);
   const gamePath = useRef<string | null>(null);
   const adaptersRef = useRef<NetworkAdapter[]>([]);
@@ -54,6 +61,11 @@ export function useBlurMachine() {
         setClosing(false);
         setFileItems([]);
         setFileCheckDone(false);
+        setFirewallItems([]);
+        setFirewallCheckDone(false);
+      } else if (s === "firewall") {
+        setState("checking");
+        setFileCheckDone(true);
       } else if (s === "disabling") {
         setState("disabling");
         setCompleted(false);
@@ -120,6 +132,21 @@ export function useBlurMachine() {
       setFileCheckDone(true);
     });
 
+    const unlistenFirewallCheck = listen<{ rule: string; status: string }>("firewall_check", (event) => {
+      const { rule, status } = event.payload;
+      setFirewallItems((prev) => {
+        const existing = prev.find((i) => i.rule === rule);
+        if (existing) {
+          return prev.map((i) => i.rule === rule ? { ...i, status: status as FirewallCheckItem["status"] } : i);
+        }
+        return [...prev, { rule, status: status as FirewallCheckItem["status"] }];
+      });
+    });
+
+    const unlistenFirewallCheckDone = listen("firewall_check_done", () => {
+      setFirewallCheckDone(true);
+    });
+
     const unlistenFinished = listen("finished", () => {
       console.log("[blurMachine] finished");
     });
@@ -134,6 +161,8 @@ export function useBlurMachine() {
       unlistenProgress.then((fn) => fn());
       unlistenFileCheck.then((fn) => fn());
       unlistenFileCheckDone.then((fn) => fn());
+      unlistenFirewallCheck.then((fn) => fn());
+      unlistenFirewallCheckDone.then((fn) => fn());
       unlistenFinished.then((fn) => fn());
       unlistenLog.then((fn) => fn());
     };
@@ -171,5 +200,5 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, overall, completed, closing, activate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, overall, completed, closing, activate } as const;
 }
