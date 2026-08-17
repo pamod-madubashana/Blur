@@ -29,10 +29,60 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Normalized version: $VERSION"
 
-  build:
+  bump-version:
     needs: validate
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Update version files
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+
+          echo "$VERSION" > VERSION
+
+          python3 -c "
+          import json
+          with open('package.json', 'r') as f:
+              data = json.load(f)
+          data['version'] = '$VERSION'
+          with open('package.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+
+          python3 -c "
+          import json
+          with open('src-tauri/tauri.conf.json', 'r') as f:
+              data = json.load(f)
+          data['version'] = '$VERSION'
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+
+          python3 -c "
+          import re
+          with open('src-tauri/Cargo.toml', 'r') as f:
+              content = f.read()
+          content = re.sub(r'^version\s*=\s*\"[^\"]*\"', 'version = \"$VERSION\"', content, flags=re.MULTILINE)
+          with open('src-tauri/Cargo.toml', 'w') as f:
+              f.write(content)
+          "
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git diff --cached --quiet || git commit -m "chore(release): v${{ needs.validate.outputs.version }}"
+          git push origin master
+
+  build:
+    needs: [validate, bump-version]
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -156,54 +206,3 @@ jobs:
             artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  bump-version:
-    needs: [validate, publish]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Update version files
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-
-          echo "$VERSION" > VERSION
-
-          python3 -c "
-          import json
-          with open('package.json', 'r') as f:
-              data = json.load(f)
-          data['version'] = '$VERSION'
-          with open('package.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
-
-          python3 -c "
-          import json
-          with open('src-tauri/tauri.conf.json', 'r') as f:
-              data = json.load(f)
-          data['version'] = '$VERSION'
-          with open('src-tauri/tauri.conf.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
-
-          python3 -c "
-          import re
-          with open('src-tauri/Cargo.toml', 'r') as f:
-              content = f.read()
-          content = re.sub(r'^version\s*=\s*\"[^\"]*\"', 'version = \"$VERSION\"', content, flags=re.MULTILINE)
-          with open('src-tauri/Cargo.toml', 'w') as f:
-              f.write(content)
-          "
-
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-          git diff --cached --quiet || git commit -m "chore(release): v${{ needs.validate.outputs.version }}"
-          git push origin master
