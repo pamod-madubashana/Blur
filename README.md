@@ -1,4 +1,8 @@
-<h1 align="center">Blur — LAN Mode Launcher</h1>
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="Blur Launcher" width="200">
+</p>
+
+<h1 align="center">Blur Launcher</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB.svg" alt="Tauri">
@@ -15,7 +19,7 @@
 ## Project Structure
 
 ```
-Blur/
+Blur Launcher/
 ├── src-tauri/            # Rust backend (Tauri 2)
 │   ├── src/
 │   │   ├── main.rs       # IPC commands, tray, window management
