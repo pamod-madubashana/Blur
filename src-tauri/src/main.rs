@@ -96,6 +96,81 @@ fn emit_adapters_list(app: &AppHandle, adapters: &[String]) {
     let _ = app.emit("adapters", adapters.to_vec());
 }
 
+#[derive(Serialize, Clone)]
+struct FileCheckPayload {
+    file: String,
+    status: String,
+}
+
+fn emit_file_check(app: &AppHandle, file: &str, status: &str) {
+    let _ = app.emit("file_check", FileCheckPayload {
+        file: file.to_string(),
+        status: status.to_string(),
+    });
+}
+
+fn emit_file_check_done(app: &AppHandle, all_ok: bool) {
+    let _ = app.emit("file_check_done", all_ok);
+}
+
+fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
+    // In dev mode, files/ is relative to CWD; in bundled mode, it's in the resource dir
+    let dev_path = PathBuf::from("files");
+    let bundled_path = app.path().resource_dir().ok()
+        .and_then(|r| Some(r.join("files")));
+
+    let files_dir = if dev_path.exists() {
+        dev_path
+    } else if let Some(ref p) = bundled_path {
+        if p.exists() { p.clone() } else { return Ok(()); }
+    } else {
+        return Ok(());
+    };
+
+    emit_log(app, "Checking online fix files...");
+    let game_path = PathBuf::from(game_dir);
+    let prefix = files_dir.to_string_lossy().to_string();
+
+    fn walk_and_check(app: &AppHandle, src: &PathBuf, dest: &PathBuf, prefix: &str) -> Result<(), String> {
+        if src.is_dir() {
+            for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let path = entry.path();
+                let relative = path.strip_prefix(prefix).unwrap_or(&path);
+                let target = dest.join(relative);
+
+                if path.is_dir() {
+                    if !target.exists() {
+                        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+                    }
+                    walk_and_check(app, &path, dest, prefix)?;
+                } else {
+                    let file_name = relative.to_string_lossy().to_string();
+                    if target.exists() {
+                        emit_log(app, format!("  OK: {file_name}"));
+                        emit_file_check(app, &file_name, "ok");
+                    } else {
+                        emit_log(app, format!("  COPY: {file_name}"));
+                        emit_file_check(app, &file_name, "copying");
+                        if let Some(parent) = target.parent() {
+                            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                        }
+                        fs::copy(&path, &target).map_err(|e| e.to_string())?;
+                        emit_file_check(app, &file_name, "copied");
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    walk_and_check(app, &files_dir, &game_path, &prefix)?;
+
+    emit_log(app, "File check complete.");
+    emit_file_check_done(app, true);
+    Ok(())
+}
+
 #[tauri::command]
 fn get_saved_path(app: AppHandle) -> Option<String> {
     let cfg = load_config(&app);
@@ -156,6 +231,10 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     let path_buf = PathBuf::from(game_path);
     let default_dir = PathBuf::from(".");
     let work_dir = path_buf.parent().unwrap_or(&default_dir);
+
+    // Check and copy online fix files before disabling adapters
+    emit_status(app, "checking");
+    check_and_copy_files(app, &work_dir.to_string_lossy())?;
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)
     emit_log(app, "Scanning for virtual adapters to disable...");

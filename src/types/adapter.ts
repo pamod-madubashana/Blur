@@ -17,4 +17,4 @@ export interface AdapterService {
   enableAdapter(id: string): Promise<void>;
 }
 
-export type AppState = "ready" | "disabling" | "launching" | "running" | "enabling";
+export type AppState = "ready" | "checking" | "disabling" | "launching" | "running" | "enabling";

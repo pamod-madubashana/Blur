@@ -4,12 +4,19 @@ import { listen } from "@tauri-apps/api/event";
 import { adapterService } from "@/services/adapterService";
 import type { AdapterPhase, AdapterProgress, AppState, NetworkAdapter } from "@/types/adapter";
 
+export interface FileCheckItem {
+  file: string;
+  status: "ok" | "copying" | "copied";
+}
+
 export function useBlurMachine() {
   const [state, setState] = useState<AppState>("ready");
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [allItems, setAllItems] = useState<AdapterProgress[]>([]);
   const [completed, setCompleted] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [fileItems, setFileItems] = useState<FileCheckItem[]>([]);
+  const [fileCheckDone, setFileCheckDone] = useState(false);
   const busy = useRef(false);
   const gamePath = useRef<string | null>(null);
   const adaptersRef = useRef<NetworkAdapter[]>([]);
@@ -41,7 +48,13 @@ export function useBlurMachine() {
       const s = event.payload;
       console.log("[blurMachine] status:", s);
 
-      if (s === "disabling") {
+      if (s === "checking") {
+        setState("checking");
+        setCompleted(false);
+        setClosing(false);
+        setFileItems([]);
+        setFileCheckDone(false);
+      } else if (s === "disabling") {
         setState("disabling");
         setCompleted(false);
         setClosing(false);
@@ -63,6 +76,8 @@ export function useBlurMachine() {
           setCompleted(false);
           setClosing(false);
           setAllItems([]);
+          setFileItems([]);
+          setFileCheckDone(false);
           busy.current = false;
         }, 300);
       }
@@ -90,6 +105,21 @@ export function useBlurMachine() {
       );
     });
 
+    const unlistenFileCheck = listen<{ file: string; status: string }>("file_check", (event) => {
+      const { file, status } = event.payload;
+      setFileItems((prev) => {
+        const existing = prev.find((i) => i.file === file);
+        if (existing) {
+          return prev.map((i) => i.file === file ? { ...i, status: status as FileCheckItem["status"] } : i);
+        }
+        return [...prev, { file, status: status as FileCheckItem["status"] }];
+      });
+    });
+
+    const unlistenFileCheckDone = listen<boolean>("file_check_done", () => {
+      setFileCheckDone(true);
+    });
+
     const unlistenFinished = listen("finished", () => {
       console.log("[blurMachine] finished");
     });
@@ -102,6 +132,8 @@ export function useBlurMachine() {
       unlistenStatus.then((fn) => fn());
       unlistenAdapters.then((fn) => fn());
       unlistenProgress.then((fn) => fn());
+      unlistenFileCheck.then((fn) => fn());
+      unlistenFileCheckDone.then((fn) => fn());
       unlistenFinished.then((fn) => fn());
       unlistenLog.then((fn) => fn());
     };
@@ -110,6 +142,7 @@ export function useBlurMachine() {
   const mode = state === "enabling" ? "enable" : "disable";
   const adapterModalOpen = state === "disabling" || state === "enabling";
   const launchModalOpen = state === "launching";
+  const fileCheckModalOpen = state === "checking";
   const items = allItems.filter((i) => i.adapter.type === "virtual");
   const totalVirtual = items.length;
   const doneVirtual = items.filter((i) => i.phase === "done" || i.phase === "failed").length;
@@ -138,5 +171,5 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, overall, completed, closing, activate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, overall, completed, closing, activate } as const;
 }
