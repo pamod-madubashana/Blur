@@ -14,18 +14,36 @@
     "windows": [
       {
         "title": "Blur // LAN Launcher",
-        "width": 900,
-        "height": 640,
-        "minWidth": 780,
-        "minHeight": 560,
+        "width": 360,
+        "height": 520,
+        "decorations": false,
         "resizable": false,
-        "center": true,
-        "decorations": true,
-        "transparent": false
+        "maximizable": false,
+        "minimizable": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "description": "Main window capabilities",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:event:default",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
+            "core:event:allow-emit-to",
+            "dialog:default",
+            "dialog:allow-open",
+            "shell:default"
+          ]
+        }
+      ]
     }
   },
   "bundle": {
