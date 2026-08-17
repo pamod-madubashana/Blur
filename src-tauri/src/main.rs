@@ -171,6 +171,96 @@ fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    emit_log(app, "Checking firewall rules...");
+
+    // Check if Blur inbound rule exists
+    let output = Command::new("netsh")
+        .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Inbound"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("Failed to run netsh: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.contains("Rule Name") {
+        emit_log(app, "  Inbound rule: OK");
+    } else {
+        emit_log(app, "  Inbound rule: MISSING - creating...");
+        let _ = Command::new("netsh")
+            .args([
+                "advfirewall", "firewall", "add", "rule",
+                "name=Blur LAN Launcher - Inbound",
+                "dir=in", "action=allow", "enable=yes",
+                "program=Blur.exe", "protocol=any",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        emit_log(app, "  Inbound rule: CREATED");
+    }
+
+    // Check if Blur outbound rule exists
+    let output = Command::new("netsh")
+        .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Outbound"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("Failed to run netsh: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.contains("Rule Name") {
+        emit_log(app, "  Outbound rule: OK");
+    } else {
+        emit_log(app, "  Outbound rule: MISSING - creating...");
+        let _ = Command::new("netsh")
+            .args([
+                "advfirewall", "firewall", "add", "rule",
+                "name=Blur LAN Launcher - Outbound",
+                "dir=out", "action=allow", "enable=yes",
+                "program=Blur.exe", "protocol=any",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        emit_log(app, "  Outbound rule: CREATED");
+    }
+
+    // Enable all ICMPv4 rules
+    emit_log(app, "Enabling ICMPv4 rules...");
+    let icmp_names = [
+        "Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)",
+        "Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)",
+        "File and Printer Sharing (Echo Request - ICMPv4-In)",
+        "File and Printer Sharing (Echo Request - ICMPv4-Out)",
+        "File and Printer Sharing (Echo Request - ICMPv4-In)*@{Domain,Private,Public}",
+        "File and Printer Sharing (Echo Request - ICMPv4-Out)*@{Domain,Private,Public}",
+        "File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-In)",
+        "File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-Out)",
+        "Core Networking - Destination Unreachable Fragmentation Needed (ICMPv4-In)",
+    ];
+
+    for name in &icmp_names {
+        let output = Command::new("netsh")
+            .args([
+                "advfirewall", "firewall", "set", "rule",
+                &format!("name={name}"),
+                "new", "enable=yes",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        if let Ok(out) = output {
+            let msg = String::from_utf8_lossy(&out.stdout);
+            if msg.contains("Ok") {
+                emit_log(app, format!("  ICMPv4: {name} -> enabled"));
+            }
+        }
+    }
+
+    emit_log(app, "Firewall check complete.");
+    Ok(())
+}
+
 #[tauri::command]
 fn get_saved_path(app: AppHandle) -> Option<String> {
     let cfg = load_config(&app);
@@ -235,6 +325,9 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     // Check and copy online fix files before disabling adapters
     emit_status(app, "checking");
     check_and_copy_files(app, &work_dir.to_string_lossy())?;
+
+    // Check and enable firewall rules
+    check_firewall_rules(app)?;
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)
     emit_log(app, "Scanning for virtual adapters to disable...");
