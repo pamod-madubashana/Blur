@@ -45,16 +45,12 @@ export function useBlurMachine() {
         setState("disabling");
         setCompleted(false);
         setClosing(false);
-      } else if (s === "waiting" || s === "launching" || s === "racing") {
+      } else if (s === "waiting" || s === "launching") {
+        setState("launching");
+        setClosing(false);
+      } else if (s === "racing") {
         setState("running");
-        setCompleted(true);
-        setTimeout(() => {
-          setClosing(true);
-          setTimeout(() => {
-            setClosing(false);
-            setCompleted(false);
-          }, 280);
-        }, 850);
+        setClosing(true);
       } else if (s === "restoring") {
         setState("enabling");
         setCompleted(false);
@@ -112,7 +108,8 @@ export function useBlurMachine() {
   }, []);
 
   const mode = state === "enabling" ? "enable" : "disable";
-  const modalOpen = state === "disabling" || state === "enabling";
+  const adapterModalOpen = state === "disabling" || state === "enabling";
+  const launchModalOpen = state === "launching";
   const items = allItems.filter((i) => i.adapter.type === "virtual");
   const totalVirtual = items.length;
   const doneVirtual = items.filter((i) => i.phase === "done" || i.phase === "failed").length;
@@ -141,5 +138,5 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, modalOpen, overall, completed, closing, activate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, overall, completed, closing, activate } as const;
 }

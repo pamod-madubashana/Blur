@@ -10,12 +10,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Position, State, WebviewWindow, WindowEvent};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct AppState {
     running: Arc<AtomicBool>,
+    tray_id: std::sync::Mutex<Option<String>>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -47,6 +50,25 @@ fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let path = config_path(app)?;
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     fs::write(path, text).map_err(|e| e.to_string())
+}
+
+const WINDOW_MARGIN_X_PX: i32 = 16;
+const WINDOW_MARGIN_Y_PX: i32 = 50;
+
+fn position_window_bottom_right(window: &WebviewWindow) -> Result<(), String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or("no monitor available".to_string())?;
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size().map_err(|e| e.to_string())?;
+
+    let x = monitor_pos.x + monitor_size.width as i32 - window_size.width as i32 - WINDOW_MARGIN_X_PX;
+    let y = monitor_pos.y + monitor_size.height as i32 - window_size.height as i32 - WINDOW_MARGIN_Y_PX;
+
+    window.set_position(Position::Physical(PhysicalPosition::new(x, y))).map_err(|e| e.to_string())
 }
 
 fn emit_log(app: &AppHandle, msg: impl Into<String>) {
@@ -256,6 +278,94 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::default())
+        .setup(|app| {
+            let show_item = MenuItemBuilder::with_id("show", "Open").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Exit").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show_item, &quit_item]).build()?;
+
+            let tray_id = "main-tray".to_string();
+            let _tray = TrayIconBuilder::with_id(&tray_id)
+                .icon(app.default_window_icon().cloned().unwrap())
+                .menu(&menu)
+                .tooltip("Blur LAN Launcher")
+                .on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = position_window_bottom_right(&window);
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                            if let Some(id) = app.state::<AppState>().tray_id.lock().unwrap().as_ref() {
+                                if let Some(tray) = app.tray_by_id(id) {
+                                    let _ = tray.set_visible(false);
+                                }
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    match event {
+                        tauri::tray::TrayIconEvent::Click { button, .. } => {
+                            if button == tauri::tray::MouseButton::Left {
+                                let app = tray.app_handle();
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = position_window_bottom_right(&window);
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                                if let Some(id) = app.state::<AppState>().tray_id.lock().unwrap().as_ref() {
+                                    if let Some(t) = app.tray_by_id(id) {
+                                        let _ = t.set_visible(false);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
+            // Store tray ID and setup window behavior
+            {
+                let state = app.state::<AppState>();
+                *state.tray_id.lock().unwrap() = Some(tray_id.clone());
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
+                let _ = position_window_bottom_right(&window);
+                let w = window.clone();
+                let handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    match event {
+                        WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            let _ = w.hide();
+                            if let Some(id) = handle.state::<AppState>().tray_id.lock().unwrap().as_ref() {
+                                if let Some(tray) = handle.tray_by_id(id) {
+                                    let _ = tray.set_visible(true);
+                                }
+                            }
+                        }
+                        WindowEvent::Focused(false) => {
+                            let _ = w.hide();
+                            if let Some(id) = handle.state::<AppState>().tray_id.lock().unwrap().as_ref() {
+                                if let Some(tray) = handle.tray_by_id(id) {
+                                    let _ = tray.set_visible(true);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                });
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_saved_path,
             pick_game_path,

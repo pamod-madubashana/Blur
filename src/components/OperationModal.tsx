@@ -31,7 +31,7 @@ export function OperationModal({ mode, items, overall, completed, closing }: Pro
       aria-label={title}
     >
       <div
-        className="cyber-panel relative w-[420px] rounded-xl px-6 pb-5 pt-5"
+        className="cyber-panel relative w-full max-w-[340px] rounded-xl px-5 pb-5 pt-5"
         style={{ animation: `${closing ? "modal-out" : "modal-in"} 300ms cubic-bezier(0.16,1,0.3,1) both` }}
       >
         {/* top hairline */}
