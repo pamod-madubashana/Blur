@@ -1,6 +1,6 @@
 [package]
 name = "blur-lan-launcher"
-version = "0.1.0"
+version = "1.0.0"
 description = "LAN-mode launcher for Blur"
 edition = "2021"
 
@@ -13,6 +13,12 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+windows = { version = "0.61", features = [
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_System_Wmi",
+] }
 
 [[bin]]
 name = "blur-lan-launcher"
