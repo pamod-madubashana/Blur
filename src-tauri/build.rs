@@ -1,8 +1,10 @@
 fn main() {
     let mut windows = tauri_build::WindowsAttributes::new();
 
-    // Require admin elevation in all builds for adapter disable/enable
-    windows = windows.app_manifest(r#"
+    // Only require admin elevation in release builds
+    // Debug builds run without elevation so `cargo run` works
+    if std::env::var("PROFILE").unwrap_or_default() == "release" {
+        windows = windows.app_manifest(r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <dependency>
     <dependentAssembly>
@@ -31,6 +33,7 @@ fn main() {
   </compatibility>
 </assembly>
 "#);
+    }
 
     let attrs = tauri_build::Attributes::new().windows_attributes(windows);
     tauri_build::try_build(attrs).expect("failed to run build script");
