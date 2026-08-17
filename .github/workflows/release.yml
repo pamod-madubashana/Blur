@@ -120,16 +120,35 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
 
+          # MSI installer
           $msi = Get-ChildItem "src-tauri/target/release/bundle/msi" -Filter *.msi -Recurse | Select-Object -First 1
-          if ($msi) { Copy-Item $msi.FullName "release/Blur-LAN-Launcher_x64_en-US.msi" -Force }
+          if ($msi) {
+            Copy-Item $msi.FullName "release/Blur-Launcher_x64_en-US.msi" -Force
+            Write-Host "Copied MSI: $($msi.Name)"
+          } else {
+            Write-Host "WARNING: No MSI found"
+          }
 
-          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse |
-            Where-Object { $_.Name -match "setup|Setup|nsis" } | Select-Object -First 1
-          if (-not $setup) { $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse | Select-Object -First 1 }
-          if ($setup) { Copy-Item $setup.FullName "release/Blur-LAN-Launcher_x64-setup.exe" -Force }
+          # NSIS setup.exe
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse | Select-Object -First 1
+          if ($setup) {
+            Copy-Item $setup.FullName "release/Blur-Launcher_x64-setup.exe" -Force
+            Write-Host "Copied Setup: $($setup.Name)"
+          } else {
+            Write-Host "WARNING: No NSIS installer found"
+          }
 
-          $portable = "src-tauri/target/release/Blur LAN Launcher.exe"
-          if (Test-Path $portable) { Copy-Item $portable "release/Blur-LAN-Launcher.exe" -Force }
+          # Portable exe
+          $portable = Get-ChildItem "src-tauri/target/release" -Filter *.exe | Select-Object -First 1
+          if ($portable) {
+            Copy-Item $portable.FullName "release/Blur-Launcher.exe" -Force
+            Write-Host "Copied Portable: $($portable.Name)"
+          } else {
+            Write-Host "WARNING: No portable exe found"
+          }
+
+          Write-Host "`nRelease artifacts:"
+          Get-ChildItem release | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1MB, 2)) MB)" }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
