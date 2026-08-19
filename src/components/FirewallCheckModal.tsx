@@ -1,13 +1,14 @@
-import type { FirewallCheckItem } from "@/hooks/useBlurMachine";
+import type { FirewallCheckItem, DiscoveringCheckItem } from "@/hooks/useBlurMachine";
 
 interface Props {
-  items: FirewallCheckItem[];
+  items: (FirewallCheckItem | DiscoveringCheckItem)[];
   done: boolean;
   closing: boolean;
 }
 
 export function FirewallCheckModal({ items, done, closing }: Props) {
   const okCount = items.filter((i) => i.status === "ok" || i.status === "created").length;
+  const failedCount = items.filter((i) => i.status === "failed").length;
   const total = items.length;
 
   return (
@@ -41,6 +42,12 @@ export function FirewallCheckModal({ items, done, closing }: Props) {
           {done ? "FIREWALL READY" : "CHECKING RULES..."}
         </p>
 
+        {failedCount > 0 && (
+          <p className="mb-3 font-mono-cyber text-[9.5px] tracking-[0.18em]" style={{ color: "#ef4444" }}>
+            {failedCount} RULE{failedCount > 1 ? "S" : ""} FAILED
+          </p>
+        )}
+
         <div className="max-h-[200px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
           {items.map((item) => (
             <div
@@ -58,10 +65,12 @@ export function FirewallCheckModal({ items, done, closing }: Props) {
                     ? "color-mix(in oklab, var(--accent-bright) 80%, white)"
                     : item.status === "created"
                       ? "#f0c040"
-                      : "white/40",
+                      : item.status === "failed"
+                        ? "#ef4444"
+                        : "white/40",
                 }}
               >
-                {item.status === "ok" ? "OK" : item.status === "created" ? "CREATED" : "..."}
+                {item.status === "ok" ? "OK" : item.status === "created" ? "CREATED" : item.status === "failed" ? "FAILED" : "..."}
               </span>
             </div>
           ))}
@@ -71,7 +80,7 @@ export function FirewallCheckModal({ items, done, closing }: Props) {
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/40">
               <span>RULES CHECKED</span>
-              <span>{okCount}/{total}</span>
+              <span>{okCount}/{total}{failedCount > 0 ? ` (${failedCount} FAILED)` : ""}</span>
             </div>
             <div
               className="h-1.5 overflow-hidden rounded-full"

@@ -186,7 +186,8 @@ pub fn disable_adapter(name: &str) -> Result<(), String> {
     };
 
     let ret = WmiSession::call_method(&adapter, "Disable")?;
-    if ret != 0 {
+    // 0 = success, 1 = already disabled
+    if ret != 0 && ret != 1 {
         log!("disable_adapter: ERROR - Disable returned {ret}");
         return Err(format!("Disable returned error code: {ret}"));
     }
@@ -218,7 +219,8 @@ pub fn enable_adapter(name: &str) -> Result<(), String> {
     };
 
     let ret = WmiSession::call_method(&adapter, "Enable")?;
-    if ret != 0 {
+    // 0 = success, 1 = already enabled
+    if ret != 0 && ret != 1 {
         log!("enable_adapter: ERROR - Enable returned {ret}");
         return Err(format!("Enable returned error code: {ret}"));
     }

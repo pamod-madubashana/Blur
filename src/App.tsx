@@ -4,14 +4,17 @@ import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
 import { FileCheckModal } from "@/components/FileCheckModal";
 import { FirewallCheckModal } from "@/components/FirewallCheckModal";
+import { StatusPanel } from "@/components/StatusPanel";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
 
   const running = state === "running" || state === "enabling";
   const firewallModalOpen = state === "checking" && fileCheckDone && !firewallCheckDone;
+  const discoveringModalOpen = state === "checking" && firewallCheckDone && !discoveringCheckDone;
 
   return (
     <main
@@ -21,10 +24,21 @@ export default function App() {
       <CyberBackground />
 
       {/* title */}
-      <header className="relative z-10 px-7 pt-6">
+      <header className="relative z-10 flex items-center justify-between px-7 pt-6">
         <span className="font-display text-[15px] font-bold tracking-[0.5em] text-white/90 text-glow">
           BLUR
         </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => invoke("close_window")}
+            className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-white/10"
+            title="Close"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-white/50" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* circle */}
@@ -45,6 +59,10 @@ export default function App() {
         <FirewallCheckModal items={firewallItems} done={firewallCheckDone} closing={closing} />
       )}
 
+      {discoveringModalOpen && (
+        <FirewallCheckModal items={discoveringItems} done={discoveringCheckDone} closing={closing} />
+      )}
+
       {adapterModalOpen && (
         <OperationModal
           mode={mode}
@@ -57,6 +75,10 @@ export default function App() {
 
       {launchModalOpen && (
         <LaunchModal closing={closing} />
+      )}
+
+      {running && stepResults.length > 0 && (
+        <StatusPanel steps={stepResults} />
       )}
     </main>
   );
