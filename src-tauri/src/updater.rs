@@ -58,6 +58,9 @@ pub fn cleanup_old_exe() {
 fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("Blur-Updater")
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
         .build()
         .map_err(|e| e.to_string())
 }
@@ -138,7 +141,14 @@ fn verify_sha256(file_path: &Path, expected_digest: &str) -> Result<bool, String
     let result = hasher.finalize();
     let actual = format!("{:x}", result);
 
-    Ok(actual.eq_ignore_ascii_case(expected))
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err(format!(
+            "SHA-256 mismatch: expected {}, got {} (size: {} bytes)",
+            expected, actual, bytes.len()
+        ));
+    }
+
+    Ok(true)
 }
 
 pub async fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<PathBuf, String> {

@@ -8,10 +8,17 @@ import { StatusPanel } from "@/components/StatusPanel";
 import { UpdateIndicator } from "@/components/UpdateIndicator";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
+import { useEffect, useState } from "react";
 
 export default function App() {
   const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
 
   const running = state === "running" || state === "enabling";
   const rulesModalOpen = state === "checking" && (checkPhase === "firewall" || checkPhase === "discovering");
@@ -54,7 +61,7 @@ export default function App() {
 
       {/* version */}
       <footer className="relative z-10 flex justify-end px-7 pb-5 font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">
-        <span>v1.0</span>
+        <span>v{version}</span>
       </footer>
 
       {checkPhase === "file" && (
