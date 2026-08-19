@@ -620,14 +620,14 @@ fn show_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn check_update() -> Result<updater::UpdateInfo, String> {
-    updater::check_for_update()
+async fn check_update() -> Result<updater::UpdateInfo, String> {
+    updater::check_for_update().await
 }
 
 #[tauri::command]
-fn start_update(app: AppHandle) -> Result<(), String> {
-    let info = updater::check_for_update()?;
-    let download_path = updater::download_update(&info, &app)?;
+async fn start_update(app: AppHandle) -> Result<(), String> {
+    let info = updater::check_for_update().await?;
+    let download_path = updater::download_update(&info, &app).await?;
     updater::install_update(&download_path, &app)
 }
 fn main() {
@@ -700,15 +700,10 @@ fn main() {
 
             // Background update check
             let app_handle = app.handle().clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_secs(2));
-                match updater::check_for_update() {
-                    Ok(info) => {
-                        let _ = app_handle.emit("update_available", info);
-                    }
-                    Err(_) => {
-                        // No update available or network error — silently ignore
-                    }
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                if let Ok(info) = updater::check_for_update().await {
+                    let _ = app_handle.emit("update_available", info);
                 }
             });
 

@@ -24,28 +24,6 @@ pub struct UpdateProgress {
 }
 
 fn get_current_version() -> String {
-    // Try VERSION file first (next to exe)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let version_file = dir.join("VERSION");
-            if let Ok(v) = fs::read_to_string(&version_file) {
-                let v = v.trim().to_string();
-                if !v.is_empty() {
-                    return v;
-                }
-            }
-        }
-    }
-
-    // Fallback: try VERSION in CWD (dev mode)
-    if let Ok(v) = fs::read_to_string("VERSION") {
-        let v = v.trim().to_string();
-        if !v.is_empty() {
-            return v;
-        }
-    }
-
-    // Fallback: Cargo.toml version
     env!("CARGO_PKG_VERSION").to_string()
 }
 
@@ -77,28 +55,36 @@ pub fn cleanup_old_exe() {
     }
 }
 
-pub fn check_for_update() -> Result<UpdateInfo, String> {
+fn build_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent("Blur-Updater")
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+pub async fn check_for_update() -> Result<UpdateInfo, String> {
     let current_version_str = get_current_version();
     let current_version = parse_version(&current_version_str)
         .ok_or_else(|| format!("Invalid current version: {current_version_str}"))?;
 
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("Blur-Updater")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = build_client()?;
 
     let response = client
         .get(&url)
         .header("Accept", "application/vnd.github+json")
         .send()
+        .await
         .map_err(|e| format!("Failed to check for updates: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!("GitHub API returned status: {}", response.status()));
     }
 
-    let release: serde_json::Value = response.json().map_err(|e| e.to_string())?;
+    let release: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
 
     let tag_name = release["tag_name"]
         .as_str()
@@ -155,14 +141,20 @@ fn verify_sha256(file_path: &Path, expected_digest: &str) -> Result<bool, String
     let result = hasher.finalize();
     let actual = format!("{:x}", result);
 
-    Ok(actual.eq_ignore_ascii_case(expected))
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err(format!(
+            "SHA-256 mismatch: expected {}, got {} (size: {} bytes)",
+            expected, actual, bytes.len()
+        ));
+    }
+
+    Ok(true)
 }
 
-pub fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub async fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let updates_dir = get_updates_dir()?;
     let download_path = updates_dir.join(format!("{ASSET_NAME}.download"));
 
-    // Remove any leftover download
     if download_path.exists() {
         fs::remove_file(&download_path).map_err(|e| e.to_string())?;
     }
@@ -173,15 +165,13 @@ pub fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<Path
         message: "Starting download...".to_string(),
     });
 
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("Blur-Updater")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = build_client()?;
 
     let response = client
         .get(&info.download_url)
         .header("Accept", "application/octet-stream")
         .send()
+        .await
         .map_err(|e| format!("Failed to start download: {e}"))?;
 
     if !response.status().is_success() {
@@ -192,25 +182,23 @@ pub fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<Path
     let mut downloaded: u64 = 0;
     let mut file = fs::File::create(&download_path).map_err(|e| e.to_string())?;
 
-    use std::io::{Read, Write};
-    let mut reader = response;
-    let mut buffer = vec![0u8; 64 * 1024]; // 64KB chunks
+    use std::io::Write;
+    let mut stream = response;
+    let mut last_emit = std::time::Instant::now();
 
-    loop {
-        let bytes_read = reader.read(&mut buffer).map_err(|e| e.to_string())?;
-        if bytes_read == 0 {
-            break;
-        }
-        file.write_all(&buffer[..bytes_read]).map_err(|e| e.to_string())?;
-        downloaded += bytes_read as u64;
+    while let Some(chunk) = stream.chunk().await.map_err(|e| format!("Download error: {e}"))? {
+        use std::io::Write;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
 
-        if total_size > 0 {
+        if total_size > 0 && last_emit.elapsed().as_millis() > 200 {
             let percent = (downloaded as f64 / total_size as f64) * 100.0;
             let _ = app.emit("update_progress", UpdateProgress {
                 phase: "downloading".to_string(),
                 percent,
                 message: format!("Downloading... {percent:.0}%"),
             });
+            last_emit = std::time::Instant::now();
         }
     }
 
@@ -223,7 +211,6 @@ pub fn download_update(info: &UpdateInfo, app: &tauri::AppHandle) -> Result<Path
         message: "Verifying download...".to_string(),
     });
 
-    // Verify SHA-256
     if !verify_sha256(&download_path, &info.digest)? {
         let _ = fs::remove_file(&download_path);
         return Err("SHA-256 verification failed".to_string());
@@ -244,22 +231,23 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
         message: "Preparing update...".to_string(),
     });
 
-    // Remove any leftover .old file from previous update
     if old_exe.exists() {
         fs::remove_file(&old_exe).map_err(|e| format!("Failed to remove old backup: {e}"))?;
     }
 
-    // Rename current exe to .old (Windows allows renaming a running exe)
+    // Rename current exe to .old (backup)
     fs::rename(&current_exe, &old_exe)
         .map_err(|e| format!("Failed to backup current exe: {e}"))?;
 
-    // Move downloaded file to the original exe location
-    fs::rename(download_path, &target_exe)
+    // Copy download to target (works across drives, unlike rename)
+    fs::copy(download_path, &target_exe)
         .map_err(|e| {
-            // Rollback: restore the old exe
             let _ = fs::rename(&old_exe, &current_exe);
-            format!("Failed to replace exe: {e}")
+            format!("Failed to copy new exe: {e}")
         })?;
+
+    // Remove download file
+    let _ = fs::remove_file(download_path);
 
     let _ = app.emit("update_progress", UpdateProgress {
         phase: "restarting".to_string(),
@@ -267,11 +255,9 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
         message: "Restarting...".to_string(),
     });
 
-    // Launch new exe
     Command::new(&target_exe)
         .spawn()
         .map_err(|e| format!("Failed to launch new version: {e}"))?;
 
-    // Exit current process
     std::process::exit(0);
 }

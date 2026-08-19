@@ -184,16 +184,17 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
 
-          PREV_TAG=$(gh release list --limit 100 --json tagName,publishedAt \
-            --jq '[.[] | select(.tagName != "v'"$VERSION"'")] | sort_by(.publishedAt) | last | .tagName' 2>/dev/null || echo "")
+          PREV_DATE=$(gh release list --limit 100 --json tagName,publishedAt \
+            --jq '[.[] | select(.tagName != "v'"$VERSION"'")] | sort_by(.publishedAt) | last | .publishedAt // ""' 2>/dev/null || echo "")
 
-          if [ -n "$PREV_TAG" ]; then
-            LOG_RANGE="${PREV_TAG}..v${VERSION}"
+          if [ -n "$PREV_DATE" ]; then
+            # Convert ISO date to YYYY-MM-DD for search query
+            SEARCH_DATE=$(echo "$PREV_DATE" | cut -d'T' -f1)
           else
-            LOG_RANGE="v${VERSION}"
+            SEARCH_DATE="2020-01-01"
           fi
 
-          PR_LIST=$(gh pr list --state merged --search "merged>=${PREV_TAG:-2020-01-01}" --json number,title,author \
+          PR_LIST=$(gh pr list --state merged --search "merged>=${SEARCH_DATE}" --json number,title,author \
             --jq '.[] | "- #" + (.number | tostring) + " " + .title + " (by @" + .author.login + ")"' 2>/dev/null || echo "")
 
           if [ -z "$PR_LIST" ]; then

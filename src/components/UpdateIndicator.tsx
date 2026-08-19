@@ -16,7 +16,7 @@ interface UpdateProgress {
   message: string;
 }
 
-export function UpdateIndicator() {
+export function UpdateIndicator({ onStatusChange }: { onStatusChange?: (updating: boolean) => void }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +39,12 @@ export function UpdateIndicator() {
   const handleUpdate = async () => {
     try {
       setError(null);
+      onStatusChange?.(true);
       await invoke("start_update");
     } catch (e) {
       setError(String(e));
       setProgress(null);
+      onStatusChange?.(false);
     }
   };
 
@@ -86,21 +88,21 @@ export function UpdateIndicator() {
   // Update available — show badge
   if (updateInfo) {
     return (
-      <div className="absolute bottom-14 left-0 right-0 z-40 flex justify-center px-7">
+      <div className="absolute top-6 right-14 z-40 flex items-center gap-2">
         <button
           onClick={handleUpdate}
           className="group flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-1.5 transition-all hover:border-cyan-500/40 hover:bg-cyan-500/10"
         >
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span className="font-mono-cyber text-[9.5px] tracking-wider text-cyan-400/70 group-hover:text-cyan-400/90">
-            v{updateInfo.latest_version}
+            Update available
           </span>
-          {error && (
-            <span className="font-mono-cyber text-[9px] text-red-400/70">
-              (retry)
-            </span>
-          )}
         </button>
+        {error && (
+          <span className="font-mono-cyber text-[8px] text-red-400/60 max-w-[200px] truncate" title={error}>
+            {error.length > 40 ? error.slice(0, 40) + "..." : error}
+          </span>
+        )}
       </div>
     );
   }
