@@ -16,7 +16,7 @@ interface UpdateProgress {
   message: string;
 }
 
-export function UpdateIndicator() {
+export function UpdateIndicator({ onStatusChange }: { onStatusChange?: (updating: boolean) => void }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +39,12 @@ export function UpdateIndicator() {
   const handleUpdate = async () => {
     try {
       setError(null);
+      onStatusChange?.(true);
       await invoke("start_update");
     } catch (e) {
       setError(String(e));
       setProgress(null);
+      onStatusChange?.(false);
     }
   };
 

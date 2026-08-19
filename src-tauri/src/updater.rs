@@ -235,14 +235,19 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
         fs::remove_file(&old_exe).map_err(|e| format!("Failed to remove old backup: {e}"))?;
     }
 
+    // Rename current exe to .old (backup)
     fs::rename(&current_exe, &old_exe)
         .map_err(|e| format!("Failed to backup current exe: {e}"))?;
 
-    fs::rename(download_path, &target_exe)
+    // Copy download to target (works across drives, unlike rename)
+    fs::copy(download_path, &target_exe)
         .map_err(|e| {
             let _ = fs::rename(&old_exe, &current_exe);
-            format!("Failed to replace exe: {e}")
+            format!("Failed to copy new exe: {e}")
         })?;
+
+    // Remove download file
+    let _ = fs::remove_file(download_path);
 
     let _ = app.emit("update_progress", UpdateProgress {
         phase: "restarting".to_string(),

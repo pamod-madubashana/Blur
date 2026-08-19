@@ -15,6 +15,7 @@ export default function App() {
   const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
   const [version, setVersion] = useState("");
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
@@ -53,11 +54,11 @@ export default function App() {
 
       {/* circle */}
       <section className="relative z-10 flex flex-1 items-center justify-center">
-        <BlurControl state={state} onActivate={activate} />
+        <BlurControl state={state} onActivate={activate} disabled={updating} />
       </section>
 
       {/* update indicator */}
-      <UpdateIndicator />
+      <UpdateIndicator onStatusChange={setUpdating} />
 
       {/* version */}
       <footer className="relative z-10 flex justify-end px-7 pb-5 font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">

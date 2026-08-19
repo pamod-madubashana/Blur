@@ -5,11 +5,12 @@ import type { AppState } from "@/types/adapter";
 interface Props {
   state: AppState;
   onActivate: () => void;
+  disabled?: boolean;
 }
 
-export function BlurControl({ state, onActivate }: Props) {
+export function BlurControl({ state, onActivate, disabled }: Props) {
   const [hover, setHover] = useState(false);
-  const interactive = state === "ready" || state === "running";
+  const interactive = (state === "ready" || state === "running") && !disabled;
   const running = state === "running" || state === "enabling";
 
   const base = running ? "RUNNING" : "BLUR";
