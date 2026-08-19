@@ -14,7 +14,7 @@ export function BlurControl({ state, onActivate, disabled }: Props) {
   const running = state === "running" || state === "enabling";
 
   const base = running ? "RUNNING" : "BLUR";
-  const hovered = running ? "STOP" : "START";
+  const hovered = running ? "RUNNING" : "START";
   const label = interactive && hover ? hovered : base;
 
   const sub =
@@ -22,12 +22,10 @@ export function BlurControl({ state, onActivate, disabled }: Props) {
       ? "WORKING"
       : state === "enabling"
         ? "WORKING"
-        : interactive && hover
-          ? running
-            ? "RESTORE ADAPTERS"
-            : "ISOLATE ADAPTERS"
-          : running
-            ? "SYSTEM ACTIVE"
+        : running
+          ? "SYSTEM ACTIVE"
+          : interactive && hover
+            ? "ISOLATE ADAPTERS"
             : "SYSTEM IDLE";
 
   return (
