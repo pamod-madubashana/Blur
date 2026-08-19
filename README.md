@@ -14,7 +14,9 @@
   <img src="https://img.shields.io/badge/License-MIT-00C853?style=flat-square" alt="License">
 </p>
 
-<p align="center">Automate Blur LAN setup — checks online fix files, configures firewall rules, enables network discovery, disables virtual adapters, and restores everything on exit.</p>
+<p align="center">Automate Blur setup — checks online fix files, configures firewall rules, enables network discovery, disables virtual adapters, and restores everything on exit.</p>
+
+> Once you run Blur Launcher, all files needed for online play are already copied to your game directory. For additional setup steps and instructions, see the [AMAX Emulator — How to Play](https://amax-emu.com/how_to_play) guide.
 
 ## Project Structure
 
