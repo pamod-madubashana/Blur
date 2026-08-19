@@ -24,12 +24,15 @@ export interface RunStep {
   status: "ok" | "failed";
 }
 
+export type CheckPhase = "idle" | "file" | "firewall" | "discovering";
+
 export function useBlurMachine() {
   const [state, setState] = useState<AppState>("ready");
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [allItems, setAllItems] = useState<AdapterProgress[]>([]);
   const [completed, setCompleted] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [checkPhase, setCheckPhase] = useState<CheckPhase>("idle");
   const [fileItems, setFileItems] = useState<FileCheckItem[]>([]);
   const [fileCheckDone, setFileCheckDone] = useState(false);
   const [firewallItems, setFirewallItems] = useState<FirewallCheckItem[]>([]);
@@ -72,6 +75,7 @@ export function useBlurMachine() {
         setState("checking");
         setCompleted(false);
         setClosing(false);
+        setCheckPhase("file");
         setFileItems([]);
         setFileCheckDone(false);
         setFirewallItems([]);
@@ -81,9 +85,11 @@ export function useBlurMachine() {
         setStepResults([]);
       } else if (s === "firewall") {
         setState("checking");
+        setCheckPhase("firewall");
         setFileCheckDone(true);
       } else if (s === "discovering") {
         setState("checking");
+        setCheckPhase("discovering");
         setFirewallCheckDone(true);
       } else if (s === "disabling") {
         setState("disabling");
@@ -106,6 +112,7 @@ export function useBlurMachine() {
           setState("ready");
           setCompleted(false);
           setClosing(false);
+          setCheckPhase("idle");
           setAllItems([]);
           setFileItems([]);
           setFileCheckDone(false);
@@ -138,6 +145,7 @@ export function useBlurMachine() {
 
     const unlistenFileCheck = listen<{ file: string; status: string }>("file_check", (event) => {
       const { file, status } = event.payload;
+      console.log("[blurMachine] file_check:", file, status);
       setFileItems((prev) => {
         const existing = prev.find((i) => i.file === file);
         if (existing) {
@@ -248,5 +256,5 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } as const;
 }

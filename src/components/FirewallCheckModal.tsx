@@ -1,13 +1,14 @@
 import type { FirewallCheckItem, DiscoveringCheckItem } from "@/hooks/useBlurMachine";
 
 interface Props {
+  title?: string;
   items: (FirewallCheckItem | DiscoveringCheckItem)[];
   done: boolean;
   closing: boolean;
 }
 
-export function FirewallCheckModal({ items, done, closing }: Props) {
-  const okCount = items.filter((i) => i.status === "ok" || i.status === "created").length;
+export function FirewallCheckModal({ title = "FIREWALL", items, done, closing }: Props) {
+  const okCount = items.filter((i) => i.status === "ok" || i.status === "created" || i.status === "enabled" || i.status === "started").length;
   const failedCount = items.filter((i) => i.status === "failed").length;
   const total = items.length;
 
@@ -34,12 +35,12 @@ export function FirewallCheckModal({ items, done, closing }: Props) {
 
         <header className="mb-4 flex items-baseline justify-between">
           <h2 className="font-display text-[13px] font-semibold tracking-[0.3em] text-white/90 text-glow">
-            FIREWALL
+            {title}
           </h2>
         </header>
 
         <p className="mb-4 font-mono-cyber text-[10.5px] tracking-[0.18em] text-white/45">
-          {done ? "FIREWALL READY" : "CHECKING RULES..."}
+          {done ? (title === "SHARING" ? "SHARING READY" : "FIREWALL READY") : "CHECKING RULES..."}
         </p>
 
         {failedCount > 0 && (
@@ -113,7 +114,7 @@ export function FirewallCheckModal({ items, done, closing }: Props) {
               style={{ background: "var(--accent-bright)", boxShadow: "0 0 10px var(--accent-bright)" }}
             />
             <span className="font-display text-[12px] font-semibold tracking-[0.34em] text-white/90 text-glow">
-              FIREWALL OK
+              {title === "SHARING" ? "SHARING OK" : "FIREWALL OK"}
             </span>
           </div>
         )}

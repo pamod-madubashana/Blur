@@ -9,12 +9,14 @@ import { useBlurMachine } from "@/hooks/useBlurMachine";
 import { invoke } from "@tauri-apps/api/core";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
 
   const running = state === "running" || state === "enabling";
-  const firewallModalOpen = state === "checking" && fileCheckDone && !firewallCheckDone;
-  const discoveringModalOpen = state === "checking" && firewallCheckDone && !discoveringCheckDone;
+  const rulesModalOpen = state === "checking" && (checkPhase === "firewall" || checkPhase === "discovering");
+
+  const ruleItems = checkPhase === "discovering" ? discoveringItems : firewallItems;
+  const rulesDone = checkPhase === "discovering" ? discoveringCheckDone : firewallCheckDone;
 
   return (
     <main
@@ -51,16 +53,17 @@ export default function App() {
         <span>v1.0</span>
       </footer>
 
-      {fileCheckModalOpen && !fileCheckDone && (
+      {checkPhase === "file" && (
         <FileCheckModal items={fileItems} done={fileCheckDone} closing={closing} />
       )}
 
-      {firewallModalOpen && (
-        <FirewallCheckModal items={firewallItems} done={firewallCheckDone} closing={closing} />
-      )}
-
-      {discoveringModalOpen && (
-        <FirewallCheckModal items={discoveringItems} done={discoveringCheckDone} closing={closing} />
+      {rulesModalOpen && (
+        <FirewallCheckModal
+          title={checkPhase === "discovering" ? "SHARING" : "FIREWALL"}
+          items={ruleItems}
+          done={rulesDone}
+          closing={closing}
+        />
       )}
 
       {adapterModalOpen && (

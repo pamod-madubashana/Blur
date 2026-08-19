@@ -57,7 +57,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../files/**/*"
+      "files/**/*"
     ],
     "windows": {
       "webviewInstallMode": {

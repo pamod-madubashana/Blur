@@ -145,7 +145,7 @@ fn emit_run_step(app: &AppHandle, step: &str, status: &str) {
 }
 
 fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
-    // In dev mode, files/ is relative to CWD; in bundled mode, it's in the resource dir
+    // files/ lives next to src-tauri (CWD in dev) or in resource dir (bundled)
     let dev_path = PathBuf::from("files");
     let bundled_path = app.path().resource_dir().ok()
         .and_then(|r| Some(r.join("files")));
@@ -449,11 +449,11 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
             emit_run_step(app, "files", "failed");
         }
     }
-    thread::sleep(Duration::from_millis(1000));
+    thread::sleep(Duration::from_secs(2));
 
     // Check and enable firewall rules
     emit_status(app, "firewall");
-    thread::sleep(Duration::from_millis(800));
+    thread::sleep(Duration::from_secs(1));
     match check_firewall_rules(app) {
         Ok(all_ok) => {
             emit_run_step(app, "firewall", if all_ok { "ok" } else { "failed" });

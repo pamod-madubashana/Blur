@@ -42,7 +42,7 @@ export function FileCheckModal({ items, done, closing }: Props) {
           {done ? "ALL FILES VERIFIED" : "CHECKING FILES..."}
         </p>
 
-        <div className="max-h-[200px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+        <div className="max-h-[200px] overflow-y-hidden">
           {items.map((item) => (
             <div
               key={item.file}
