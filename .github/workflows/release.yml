@@ -208,8 +208,12 @@ jobs:
             echo ""
             echo "## Installation"
             echo "Download the appropriate file for Windows:"
-            echo "- **Installer**: `.msi` or `.exe` installer"
-            echo "- **Portable**: `.exe` standalone executable"
+            echo "- **Installer**: `.exe` installer"
+            echo "- **Portable**: `.exe` standalone executable (auto-updates supported)"
+            echo ""
+            echo "## Auto-Update"
+            echo "The portable executable includes a built-in updater."
+            echo "When a new version is released, the app will notify you and update automatically."
             echo "RELEASE_BODY"
           } >> $GITHUB_OUTPUT
 

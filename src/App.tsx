@@ -5,6 +5,7 @@ import { OperationModal } from "@/components/OperationModal";
 import { FileCheckModal } from "@/components/FileCheckModal";
 import { FirewallCheckModal } from "@/components/FirewallCheckModal";
 import { StatusPanel } from "@/components/StatusPanel";
+import { UpdateIndicator } from "@/components/UpdateIndicator";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -47,6 +48,9 @@ export default function App() {
       <section className="relative z-10 flex flex-1 items-center justify-center">
         <BlurControl state={state} onActivate={activate} />
       </section>
+
+      {/* update indicator */}
+      <UpdateIndicator />
 
       {/* version */}
       <footer className="relative z-10 flex justify-end px-7 pb-5 font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">

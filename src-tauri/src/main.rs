@@ -2,6 +2,7 @@
 
 mod network;
 mod discovering;
+mod updater;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -618,12 +619,26 @@ fn show_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn check_update() -> Result<updater::UpdateInfo, String> {
+    updater::check_for_update()
+}
+
+#[tauri::command]
+fn start_update(app: AppHandle) -> Result<(), String> {
+    let info = updater::check_for_update()?;
+    let download_path = updater::download_update(&info, &app)?;
+    updater::install_update(&download_path, &app)
+}
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::default())
         .setup(|app| {
+            // Cleanup any leftover .old file from a previous update
+            updater::cleanup_old_exe();
+
             let show_item = MenuItemBuilder::with_id("show", "Open").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Exit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&show_item, &quit_item]).build()?;
@@ -683,6 +698,20 @@ fn main() {
                 });
             }
 
+            // Background update check
+            let app_handle = app.handle().clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_secs(2));
+                match updater::check_for_update() {
+                    Ok(info) => {
+                        let _ = app_handle.emit("update_available", info);
+                    }
+                    Err(_) => {
+                        // No update available or network error — silently ignore
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -694,7 +723,9 @@ fn main() {
             disable_adapter,
             enable_adapter,
             close_window,
-            show_window
+            show_window,
+            check_update,
+            start_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running Blur LAN Launcher");
