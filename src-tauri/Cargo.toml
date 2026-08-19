@@ -1,6 +1,6 @@
 [package]
 name = "blur-launcher"
-version = "1.3.0"
+version = "1.4.0"
 description = "LAN-mode launcher for Blur"
 edition = "2021"
 
