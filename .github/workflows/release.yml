@@ -81,6 +81,7 @@ jobs:
           "
 
       - name: Commit version bump
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -88,6 +89,10 @@ jobs:
           git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
           git diff --cached --quiet || git commit -m "chore(release): v${{ needs.validate.outputs.version }}"
           git push origin master
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
 
   build:
     needs: [validate, bump-version]
@@ -95,6 +100,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
