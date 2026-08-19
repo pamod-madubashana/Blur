@@ -7,8 +7,8 @@ use windows::Win32::System::Registry::{
 };
 use windows::Win32::System::Services::{
     CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
-    SC_HANDLE, SC_STATUS_PROCESS_INFO, SERVICE_START, SERVICE_START_PENDING, SERVICE_STATUS_PROCESS,
-    SERVICE_STOPPED,
+    SC_HANDLE, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_START_PENDING,
+    SERVICE_STATUS_PROCESS, SERVICE_STOPPED,
 };
 
 macro_rules! log {
@@ -93,7 +93,7 @@ unsafe fn open_scm() -> Result<SC_HANDLE, String> {
 
 unsafe fn get_service_status(scm: SC_HANDLE, name: &str) -> Result<u32, String> {
     let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-    let service = OpenServiceW(scm, PCWSTR::from_raw(wide_name.as_ptr()), SERVICE_START);
+    let service = OpenServiceW(scm, PCWSTR::from_raw(wide_name.as_ptr()), SERVICE_QUERY_STATUS);
     let svc = match service {
         Ok(h) if !h.is_invalid() => h,
         Ok(_) => return Err(format!("OpenService '{name}' returned invalid handle")),
@@ -158,6 +158,14 @@ unsafe fn start_service(scm: SC_HANDLE, name: &str) -> Result<(), String> {
 pub fn check_and_enable_discovering(app: &AppHandle) -> Result<bool, String> {
     log!("check_and_enable_discovering - starting...");
     let mut all_ok = true;
+
+    // Emit initial "checking" status so progress bar starts at 0%
+    emit_check(app, "SMB Signing", "checking");
+    emit_check(app, "SMB Encryption", "checking");
+    emit_check(app, "Function Discovery Provider Host", "checking");
+    emit_check(app, "Function Discovery Resource Publication", "checking");
+    emit_check(app, "UPnP Device Host", "checking");
+    std::thread::sleep(std::time::Duration::from_millis(400));
 
     // 1. Check & enable EnableSecuritySignature
     emit_check(app, "SMB Signing", "checking");
@@ -375,6 +383,7 @@ pub fn check_and_enable_discovering(app: &AppHandle) -> Result<bool, String> {
     }
 
     log!("check_and_enable_discovering - complete");
+    std::thread::sleep(std::time::Duration::from_millis(800));
     emit_check_done(app);
     Ok(all_ok)
 }

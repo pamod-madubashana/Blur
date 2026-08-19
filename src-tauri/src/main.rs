@@ -151,11 +151,21 @@ fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
         .and_then(|r| Some(r.join("files")));
 
     let files_dir = if dev_path.exists() {
-        dev_path
+        Some(dev_path)
     } else if let Some(ref p) = bundled_path {
-        if p.exists() { p.clone() } else { return Ok(()); }
+        if p.exists() { Some(p.clone()) } else { None }
     } else {
-        return Ok(());
+        None
+    };
+
+    let files_dir = match files_dir {
+        Some(d) => d,
+        None => {
+            emit_log(app, "No online fix files directory found - skipping.");
+            emit_file_check(app, "Online Fix", "ok");
+            emit_file_check_done(app, true);
+            return Ok(());
+        }
     };
 
     emit_log(app, "Checking online fix files...");
@@ -209,6 +219,12 @@ fn check_firewall_rules(app: &AppHandle) -> Result<bool, String> {
     let mut all_ok = true;
 
     emit_log(app, "Checking firewall rules...");
+
+    // Emit initial "checking" status so progress bar starts at 0%
+    emit_firewall_check(app, "Blur LAN Launcher - Inbound", "checking");
+    emit_firewall_check(app, "Blur LAN Launcher - Outbound", "checking");
+    emit_firewall_check(app, "ICMPv4 Rules", "checking");
+    std::thread::sleep(std::time::Duration::from_millis(400));
 
     // Check if Blur inbound rule exists
     match Command::new("netsh")
