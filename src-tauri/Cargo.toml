@@ -21,6 +21,9 @@ windows = { version = "0.61", features = [
     "Win32_System_Registry",
     "Win32_System_Services",
 ] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+semver = "1"
+sha2 = "0.10"
 
 [[bin]]
 name = "blur-lan-launcher"
