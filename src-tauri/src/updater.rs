@@ -224,6 +224,7 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let old_exe = exe_dir.join("Blur-Launcher.exe.old");
     let target_exe = exe_dir.join(ASSET_NAME);
+    let temp_exe = exe_dir.join(format!("{ASSET_NAME}.update"));
 
     let _ = app.emit("update_progress", UpdateProgress {
         phase: "installing".to_string(),
@@ -234,19 +235,28 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
     if old_exe.exists() {
         fs::remove_file(&old_exe).map_err(|e| format!("Failed to remove old backup: {e}"))?;
     }
+    if temp_exe.exists() {
+        fs::remove_file(&temp_exe).map_err(|e| format!("Failed to remove old temp: {e}"))?;
+    }
 
-    // Rename current exe to .old (backup)
+    // Copy download to temp file first (avoids locking issues on Windows)
+    fs::copy(download_path, &temp_exe)
+        .map_err(|e| format!("Failed to prepare new exe: {e}"))?;
+
+    // Rename current exe to .old (Windows allows renaming a running exe)
     fs::rename(&current_exe, &old_exe)
-        .map_err(|e| format!("Failed to backup current exe: {e}"))?;
-
-    // Copy download to target (works across drives, unlike rename)
-    fs::copy(download_path, &target_exe)
         .map_err(|e| {
-            let _ = fs::rename(&old_exe, &current_exe);
-            format!("Failed to copy new exe: {e}")
+            let _ = fs::remove_file(&temp_exe);
+            format!("Failed to backup current exe: {e}")
         })?;
 
-    // Remove download file
+    // Rename temp to target (atomic on same volume)
+    fs::rename(&temp_exe, &target_exe)
+        .map_err(|e| {
+            let _ = fs::rename(&old_exe, &current_exe);
+            format!("Failed to replace exe: {e}")
+        })?;
+
     let _ = fs::remove_file(download_path);
 
     let _ = app.emit("update_progress", UpdateProgress {
