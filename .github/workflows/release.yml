@@ -75,7 +75,7 @@ jobs:
           import re
           with open('src-tauri/Cargo.lock', 'r') as f:
               content = f.read()
-          content = re.sub(r'^(name = \"blur-lan-launcher\"\nversion = \")([^\"]*)(\")', r'\g<1>' + '$VERSION' + r'\3', content, flags=re.MULTILINE)
+          content = re.sub(r'^(name = \"blur-launcher\"\nversion = \")([^\"]*)(\")', r'\g<1>' + '$VERSION' + r'\3', content, flags=re.MULTILINE)
           with open('src-tauri/Cargo.lock', 'w') as f:
               f.write(content)
           "

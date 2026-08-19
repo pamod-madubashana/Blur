@@ -34,7 +34,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("blur-lan-launcher.config.json"))
+    Ok(dir.join("blur-launcher.config.json"))
 }
 
 fn load_config(app: &AppHandle) -> Config {
