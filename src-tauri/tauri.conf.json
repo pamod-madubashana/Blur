@@ -19,7 +19,7 @@
         "decorations": false,
         "resizable": false,
         "maximizable": false,
-        "minimizable": false,
+        "minimizable": true,
         "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true
@@ -57,7 +57,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../files/**/*"
+      "files/**/*"
     ],
     "windows": {
       "webviewInstallMode": {

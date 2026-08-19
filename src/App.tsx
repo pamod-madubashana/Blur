@@ -4,14 +4,19 @@ import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
 import { FileCheckModal } from "@/components/FileCheckModal";
 import { FirewallCheckModal } from "@/components/FirewallCheckModal";
+import { StatusPanel } from "@/components/StatusPanel";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
 
   const running = state === "running" || state === "enabling";
-  const firewallModalOpen = state === "checking" && fileCheckDone && !firewallCheckDone;
+  const rulesModalOpen = state === "checking" && (checkPhase === "firewall" || checkPhase === "discovering");
+
+  const ruleItems = checkPhase === "discovering" ? discoveringItems : firewallItems;
+  const rulesDone = checkPhase === "discovering" ? discoveringCheckDone : firewallCheckDone;
 
   return (
     <main
@@ -21,10 +26,21 @@ export default function App() {
       <CyberBackground />
 
       {/* title */}
-      <header className="relative z-10 px-7 pt-6">
+      <header className="relative z-10 flex items-center justify-between px-7 pt-6">
         <span className="font-display text-[15px] font-bold tracking-[0.5em] text-white/90 text-glow">
           BLUR
         </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => invoke("close_window")}
+            className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-white/10"
+            title="Close"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-white/50" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* circle */}
@@ -37,12 +53,17 @@ export default function App() {
         <span>v1.0</span>
       </footer>
 
-      {fileCheckModalOpen && !fileCheckDone && (
+      {checkPhase === "file" && (
         <FileCheckModal items={fileItems} done={fileCheckDone} closing={closing} />
       )}
 
-      {firewallModalOpen && (
-        <FirewallCheckModal items={firewallItems} done={firewallCheckDone} closing={closing} />
+      {rulesModalOpen && (
+        <FirewallCheckModal
+          title={checkPhase === "discovering" ? "SHARING" : "FIREWALL"}
+          items={ruleItems}
+          done={rulesDone}
+          closing={closing}
+        />
       )}
 
       {adapterModalOpen && (
@@ -57,6 +78,10 @@ export default function App() {
 
       {launchModalOpen && (
         <LaunchModal closing={closing} />
+      )}
+
+      {running && stepResults.length > 0 && (
+        <StatusPanel steps={stepResults} />
       )}
     </main>
   );
