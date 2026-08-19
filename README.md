@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/License-MIT-00C853?style=flat-square" alt="License">
 </p>
 
-<p align="center">Disable virtual network adapters, launch Blur in LAN mode, and restore adapters automatically when the game exits.</p>
+<p align="center">Automate Blur LAN setup — checks online fix files, configures firewall rules, enables network discovery, disables virtual adapters, and restores everything on exit.</p>
 
 ## Project Structure
 
@@ -22,10 +22,12 @@
 Blur Launcher/
 ├── src-tauri/            # Rust backend (Tauri 2)
 │   ├── src/
-│   │   ├── main.rs       # IPC commands, tray, window management
-│   │   └── network.rs    # WMI adapter disable/enable
-│   ├── build.rs          # Admin manifest embedding
-│   └── tauri.conf.json   # App config, window, bundle settings
+│   │   ├── main.rs         # IPC commands, tray, window management
+│   │   ├── network.rs      # WMI adapter disable/enable
+│   │   ├── discovering.rs  # Network discovery & SMB config
+│   │   └── updater.rs      # Auto-update via GitHub releases
+│   ├── build.rs            # Admin manifest embedding
+│   └── tauri.conf.json     # App config, window, bundle settings
 ├── src/                  # React frontend
 │   ├── components/       # UI components (BlurControl, modals)
 │   ├── hooks/            # State machine, event listeners
@@ -50,11 +52,10 @@ npm run tauri build
 
 ## How It Works
 
-1. Detects virtual network adapters (VMware, VirtualBox, etc.) via WMI
-2. Disables them to isolate the network for LAN play
-3. Launches Blur with the game executable
-4. Waits for the game process to exit
-5. Restores all disabled adapters automatically
+1. **Online Fix** — Checks bundled fix files against the game directory, copies any that are missing
+2. **Firewall** — Verifies inbound/outbound firewall rules for Blur.exe, creates them if absent; enables ICMPv4 rules for LAN discovery
+3. **Network Discovery** — Enables SMB signing and encryption via registry, starts Function Discovery and UPnP services
+4. **Isolate & Launch** — Disables virtual adapters (VMware, VirtualBox, Hyper-V, VPN, etc.), launches the game, and restores all adapters automatically on exit
 
 The app runs as a system tray application — compact, always on top, and positioned at the bottom-right corner.
 
