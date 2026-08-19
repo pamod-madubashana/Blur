@@ -199,9 +199,36 @@ pub fn check_and_enable_discovering(app: &AppHandle) -> Result<bool, String> {
                     }
                     Err(e) => {
                         let _ = RegCloseKey(key);
-                        log!("EnableSecuritySignature read failed: {e}");
-                        emit_check(app, "SMB Signing", "failed");
-                        all_ok = false;
+                        if e.contains("code 2") || e.contains("WIN32_ERROR(2)") {
+                            log!("EnableSecuritySignature value not found - creating with value 1");
+                            emit_check(app, "SMB Signing", "enabling");
+                            match reg_open_key(REG_SAM_FLAGS((KEY_READ.0 | KEY_SET_VALUE.0) as u32)) {
+                                Ok(wkey) => {
+                                    match reg_write_dword(wkey, w!("EnableSecuritySignature"), 1) {
+                                        Ok(()) => {
+                                            let _ = RegCloseKey(wkey);
+                                            log!("EnableSecuritySignature created and enabled");
+                                            emit_check(app, "SMB Signing", "enabled");
+                                        }
+                                        Err(e) => {
+                                            let _ = RegCloseKey(wkey);
+                                            log!("EnableSecuritySignature create failed: {e}");
+                                            emit_check(app, "SMB Signing", "failed");
+                                            all_ok = false;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log!("EnableSecuritySignature key open for create failed: {e}");
+                                    emit_check(app, "SMB Signing", "failed");
+                                    all_ok = false;
+                                }
+                            }
+                        } else {
+                            log!("EnableSecuritySignature read failed: {e}");
+                            emit_check(app, "SMB Signing", "failed");
+                            all_ok = false;
+                        }
                     }
                 }
             }
@@ -241,7 +268,7 @@ pub fn check_and_enable_discovering(app: &AppHandle) -> Result<bool, String> {
                                     }
                                 }
                                 Err(e) => {
-                                    log!("EncryptData key open failed: {e}");
+                                    log!("EncryptData key open for write failed: {e}");
                                     emit_check(app, "SMB Encryption", "failed");
                                     all_ok = false;
                                 }
@@ -253,9 +280,37 @@ pub fn check_and_enable_discovering(app: &AppHandle) -> Result<bool, String> {
                     }
                     Err(e) => {
                         let _ = RegCloseKey(key);
-                        log!("EncryptData read failed: {e}");
-                        emit_check(app, "SMB Encryption", "failed");
-                        all_ok = false;
+                        // Code 2 = ERROR_FILE_NOT_FOUND - value doesn't exist, create it
+                        if e.contains("code 2") || e.contains("WIN32_ERROR(2)") {
+                            log!("EncryptData value not found - creating with value 1");
+                            emit_check(app, "SMB Encryption", "enabling");
+                            match reg_open_key(REG_SAM_FLAGS((KEY_READ.0 | KEY_SET_VALUE.0) as u32)) {
+                                Ok(wkey) => {
+                                    match reg_write_dword(wkey, w!("EncryptData"), 1) {
+                                        Ok(()) => {
+                                            let _ = RegCloseKey(wkey);
+                                            log!("EncryptData created and enabled");
+                                            emit_check(app, "SMB Encryption", "enabled");
+                                        }
+                                        Err(e) => {
+                                            let _ = RegCloseKey(wkey);
+                                            log!("EncryptData create failed: {e}");
+                                            emit_check(app, "SMB Encryption", "failed");
+                                            all_ok = false;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log!("EncryptData key open for create failed: {e}");
+                                    emit_check(app, "SMB Encryption", "failed");
+                                    all_ok = false;
+                                }
+                            }
+                        } else {
+                            log!("EncryptData read failed: {e}");
+                            emit_check(app, "SMB Encryption", "failed");
+                            all_ok = false;
+                        }
                     }
                 }
             }

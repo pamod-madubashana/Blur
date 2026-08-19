@@ -425,6 +425,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
 
     // Check and copy online fix files before disabling adapters
     emit_status(app, "checking");
+    thread::sleep(Duration::from_millis(500));
     match check_and_copy_files(app, &work_dir.to_string_lossy()) {
         Ok(()) => emit_run_step(app, "files", "ok"),
         Err(e) => {
@@ -432,9 +433,11 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
             emit_run_step(app, "files", "failed");
         }
     }
+    thread::sleep(Duration::from_millis(1000));
 
     // Check and enable firewall rules
     emit_status(app, "firewall");
+    thread::sleep(Duration::from_millis(800));
     match check_firewall_rules(app) {
         Ok(all_ok) => {
             emit_run_step(app, "firewall", if all_ok { "ok" } else { "failed" });
@@ -444,6 +447,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
             emit_run_step(app, "firewall", "failed");
         }
     }
+    thread::sleep(Duration::from_millis(600));
 
     // Check and enable sharing settings
     emit_status(app, "discovering");
@@ -456,6 +460,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
             emit_run_step(app, "discovering", "failed");
         }
     }
+    thread::sleep(Duration::from_millis(600));
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)
     emit_log(app, "Scanning for virtual adapters to disable...");
@@ -482,6 +487,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
                 adapters_ok = false;
             }
         }
+        thread::sleep(Duration::from_millis(300));
     }
     emit_run_step(app, "adapters", if adapters_ok { "ok" } else { "failed" });
 
