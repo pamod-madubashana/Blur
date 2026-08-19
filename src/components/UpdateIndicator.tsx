@@ -86,14 +86,14 @@ export function UpdateIndicator() {
   // Update available — show badge
   if (updateInfo) {
     return (
-      <div className="absolute bottom-14 left-0 right-0 z-40 flex justify-center px-7">
+      <div className="absolute top-6 right-14 z-40 flex items-center">
         <button
           onClick={handleUpdate}
           className="group flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-1.5 transition-all hover:border-cyan-500/40 hover:bg-cyan-500/10"
         >
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span className="font-mono-cyber text-[9.5px] tracking-wider text-cyan-400/70 group-hover:text-cyan-400/90">
-            v{updateInfo.latest_version}
+            Update available
           </span>
           {error && (
             <span className="font-mono-cyber text-[9px] text-red-400/70">
