@@ -630,7 +630,6 @@ fn start_update(app: AppHandle) -> Result<(), String> {
     let download_path = updater::download_update(&info, &app)?;
     updater::install_update(&download_path, &app)
 }
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
