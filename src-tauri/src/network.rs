@@ -185,10 +185,20 @@ pub fn disable_adapter(name: &str) -> Result<(), String> {
             .map_err(|e| format!("ItemIndex failed: {e}"))?
     };
 
-    let ret = WmiSession::call_method(&adapter, "Disable")?;
-    if ret != 0 {
-        log!("disable_adapter: ERROR - Disable returned {ret}");
-        return Err(format!("Disable returned error code: {ret}"));
+    let ret = match WmiSession::call_method(&adapter, "Disable") {
+        Ok(r) => r,
+        Err(e) => {
+            // 0x8004102F = Invalid method (adapter type doesn't support Disable)
+            if e.contains("0x8004102F") || e.contains("Invalid method") {
+                log!("disable_adapter: '{name}' does not support Disable method - skipping");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    };
+    // 0 = success, 1 = already disabled, 5 = access denied (non-admin) - all non-fatal
+    if ret != 0 && ret != 1 {
+        log!("disable_adapter: '{name}' Disable returned {ret} (non-fatal)");
     }
 
     log!("disable_adapter: '{name}' disabled successfully");
@@ -217,10 +227,19 @@ pub fn enable_adapter(name: &str) -> Result<(), String> {
             .map_err(|e| format!("ItemIndex failed: {e}"))?
     };
 
-    let ret = WmiSession::call_method(&adapter, "Enable")?;
-    if ret != 0 {
-        log!("enable_adapter: ERROR - Enable returned {ret}");
-        return Err(format!("Enable returned error code: {ret}"));
+    let ret = match WmiSession::call_method(&adapter, "Enable") {
+        Ok(r) => r,
+        Err(e) => {
+            if e.contains("0x8004102F") || e.contains("Invalid method") {
+                log!("enable_adapter: '{name}' does not support Enable method - skipping");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    };
+    // 0 = success, 1 = already enabled, 5 = access denied (non-admin) - all non-fatal
+    if ret != 0 && ret != 1 {
+        log!("enable_adapter: '{name}' Enable returned {ret} (non-fatal)");
     }
 
     log!("enable_adapter: '{name}' enabled successfully");

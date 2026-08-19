@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod network;
+mod discovering;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -130,18 +131,41 @@ fn emit_firewall_check_done(app: &AppHandle) {
     let _ = app.emit("firewall_check_done", ());
 }
 
+#[derive(Clone, serde::Serialize)]
+struct RunStepPayload {
+    step: String,
+    status: String,
+}
+
+fn emit_run_step(app: &AppHandle, step: &str, status: &str) {
+    let _ = app.emit("run_step", RunStepPayload {
+        step: step.to_string(),
+        status: status.to_string(),
+    });
+}
+
 fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
-    // In dev mode, files/ is relative to CWD; in bundled mode, it's in the resource dir
+    // files/ lives next to src-tauri (CWD in dev) or in resource dir (bundled)
     let dev_path = PathBuf::from("files");
     let bundled_path = app.path().resource_dir().ok()
         .and_then(|r| Some(r.join("files")));
 
     let files_dir = if dev_path.exists() {
-        dev_path
+        Some(dev_path)
     } else if let Some(ref p) = bundled_path {
-        if p.exists() { p.clone() } else { return Ok(()); }
+        if p.exists() { Some(p.clone()) } else { None }
     } else {
-        return Ok(());
+        None
+    };
+
+    let files_dir = match files_dir {
+        Some(d) => d,
+        None => {
+            emit_log(app, "No online fix files directory found - skipping.");
+            emit_file_check(app, "Online Fix", "ok");
+            emit_file_check_done(app, true);
+            return Ok(());
+        }
     };
 
     emit_log(app, "Checking online fix files...");
@@ -189,64 +213,117 @@ fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
+fn check_firewall_rules(app: &AppHandle) -> Result<bool, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut all_ok = true;
 
     emit_log(app, "Checking firewall rules...");
 
+    // Emit initial "checking" status so progress bar starts at 0%
+    emit_firewall_check(app, "Blur LAN Launcher - Inbound", "checking");
+    emit_firewall_check(app, "Blur LAN Launcher - Outbound", "checking");
+    emit_firewall_check(app, "ICMPv4 Rules", "checking");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+
     // Check if Blur inbound rule exists
-    let output = Command::new("netsh")
+    match Command::new("netsh")
         .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Inbound"])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map_err(|e| format!("Failed to run netsh: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("Rule Name") {
-        emit_log(app, "  Inbound rule: OK");
-        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "ok");
-    } else {
-        emit_log(app, "  Inbound rule: MISSING - creating...");
-        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "creating");
-        let _ = Command::new("netsh")
-            .args([
-                "advfirewall", "firewall", "add", "rule",
-                "name=Blur LAN Launcher - Inbound",
-                "dir=in", "action=allow", "enable=yes",
-                "program=Blur.exe", "protocol=any",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        emit_log(app, "  Inbound rule: CREATED");
-        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "created");
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("Rule Name") {
+                emit_log(app, "  Inbound rule: OK");
+                emit_firewall_check(app, "Blur LAN Launcher - Inbound", "ok");
+            } else {
+                emit_log(app, "  Inbound rule: MISSING - creating...");
+                emit_firewall_check(app, "Blur LAN Launcher - Inbound", "creating");
+                match Command::new("netsh")
+                    .args([
+                        "advfirewall", "firewall", "add", "rule",
+                        "name=Blur LAN Launcher - Inbound",
+                        "dir=in", "action=allow", "enable=yes",
+                        "program=Blur.exe", "protocol=any",
+                    ])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                {
+                    Ok(out) => {
+                        let msg = String::from_utf8_lossy(&out.stdout);
+                        if msg.contains("Ok") {
+                            emit_log(app, "  Inbound rule: CREATED");
+                            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "created");
+                        } else {
+                            emit_log(app, format!("  Inbound rule: FAILED - {}", msg.trim()));
+                            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
+                            all_ok = false;
+                        }
+                    }
+                    Err(e) => {
+                        emit_log(app, format!("  Inbound rule: FAILED to create - {e}"));
+                        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
+                        all_ok = false;
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            emit_log(app, format!("  Inbound rule: FAILED to check - {e}"));
+            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
+            all_ok = false;
+        }
     }
 
     // Check if Blur outbound rule exists
-    let output = Command::new("netsh")
+    match Command::new("netsh")
         .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Outbound"])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map_err(|e| format!("Failed to run netsh: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("Rule Name") {
-        emit_log(app, "  Outbound rule: OK");
-        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "ok");
-    } else {
-        emit_log(app, "  Outbound rule: MISSING - creating...");
-        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "creating");
-        let _ = Command::new("netsh")
-            .args([
-                "advfirewall", "firewall", "add", "rule",
-                "name=Blur LAN Launcher - Outbound",
-                "dir=out", "action=allow", "enable=yes",
-                "program=Blur.exe", "protocol=any",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        emit_log(app, "  Outbound rule: CREATED");
-        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "created");
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("Rule Name") {
+                emit_log(app, "  Outbound rule: OK");
+                emit_firewall_check(app, "Blur LAN Launcher - Outbound", "ok");
+            } else {
+                emit_log(app, "  Outbound rule: MISSING - creating...");
+                emit_firewall_check(app, "Blur LAN Launcher - Outbound", "creating");
+                match Command::new("netsh")
+                    .args([
+                        "advfirewall", "firewall", "add", "rule",
+                        "name=Blur LAN Launcher - Outbound",
+                        "dir=out", "action=allow", "enable=yes",
+                        "program=Blur.exe", "protocol=any",
+                    ])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                {
+                    Ok(out) => {
+                        let msg = String::from_utf8_lossy(&out.stdout);
+                        if msg.contains("Ok") {
+                            emit_log(app, "  Outbound rule: CREATED");
+                            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "created");
+                        } else {
+                            emit_log(app, format!("  Outbound rule: FAILED - {}", msg.trim()));
+                            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
+                            all_ok = false;
+                        }
+                    }
+                    Err(e) => {
+                        emit_log(app, format!("  Outbound rule: FAILED to create - {e}"));
+                        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
+                        all_ok = false;
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            emit_log(app, format!("  Outbound rule: FAILED to check - {e}"));
+            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
+            all_ok = false;
+        }
     }
 
     // Enable all ICMPv4 rules
@@ -264,27 +341,41 @@ fn check_firewall_rules(app: &AppHandle) -> Result<(), String> {
         "Core Networking - Destination Unreachable Fragmentation Needed (ICMPv4-In)",
     ];
 
+    let mut icmp_ok = true;
     for name in &icmp_names {
-        let output = Command::new("netsh")
+        match Command::new("netsh")
             .args([
                 "advfirewall", "firewall", "set", "rule",
                 &format!("name={name}"),
                 "new", "enable=yes",
             ])
             .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        if let Ok(out) = output {
-            let msg = String::from_utf8_lossy(&out.stdout);
-            if msg.contains("Ok") {
-                emit_log(app, format!("  ICMPv4: {name} -> enabled"));
+            .output()
+        {
+            Ok(out) => {
+                let msg = String::from_utf8_lossy(&out.stdout);
+                if msg.contains("Ok") {
+                    emit_log(app, format!("  ICMPv4: {name} -> enabled"));
+                } else {
+                    emit_log(app, format!("  ICMPv4: {name} -> skipped (not found)"));
+                }
+            }
+            Err(e) => {
+                emit_log(app, format!("  ICMPv4: {name} -> FAILED: {e}"));
+                icmp_ok = false;
+                all_ok = false;
             }
         }
     }
-    emit_firewall_check(app, "ICMPv4 Rules", "ok");
+    if icmp_ok {
+        emit_firewall_check(app, "ICMPv4 Rules", "ok");
+    } else {
+        emit_firewall_check(app, "ICMPv4 Rules", "failed");
+    }
 
     emit_log(app, "Firewall check complete.");
     emit_firewall_check_done(app);
-    Ok(())
+    Ok(all_ok)
 }
 
 #[tauri::command]
@@ -350,11 +441,42 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
 
     // Check and copy online fix files before disabling adapters
     emit_status(app, "checking");
-    check_and_copy_files(app, &work_dir.to_string_lossy())?;
+    thread::sleep(Duration::from_millis(500));
+    match check_and_copy_files(app, &work_dir.to_string_lossy()) {
+        Ok(()) => emit_run_step(app, "files", "ok"),
+        Err(e) => {
+            emit_log(app, format!("File check failed: {e}"));
+            emit_run_step(app, "files", "failed");
+        }
+    }
+    thread::sleep(Duration::from_secs(2));
 
     // Check and enable firewall rules
     emit_status(app, "firewall");
-    check_firewall_rules(app)?;
+    thread::sleep(Duration::from_secs(1));
+    match check_firewall_rules(app) {
+        Ok(all_ok) => {
+            emit_run_step(app, "firewall", if all_ok { "ok" } else { "failed" });
+        }
+        Err(e) => {
+            emit_log(app, format!("Firewall check failed: {e}"));
+            emit_run_step(app, "firewall", "failed");
+        }
+    }
+    thread::sleep(Duration::from_millis(600));
+
+    // Check and enable sharing settings
+    emit_status(app, "discovering");
+    match discovering::check_and_enable_discovering(app) {
+        Ok(all_ok) => {
+            emit_run_step(app, "discovering", if all_ok { "ok" } else { "failed" });
+        }
+        Err(e) => {
+            emit_log(app, format!("Discovering check failed: {e}"));
+            emit_run_step(app, "discovering", "failed");
+        }
+    }
+    thread::sleep(Duration::from_millis(600));
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)
     emit_log(app, "Scanning for virtual adapters to disable...");
@@ -366,6 +488,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     }
     emit_adapters_list(app, &all_virtual);
     emit_status(app, "disabling");
+    let mut adapters_ok = true;
     for name in &all_virtual {
         emit_adapter_progress(app, name, "processing");
         emit_log(app, format!("Disabling: {name}"));
@@ -377,9 +500,12 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
             Err(e) => {
                 emit_log(app, format!("  -> failed: {e}"));
                 emit_adapter_progress(app, name, "failed");
+                adapters_ok = false;
             }
         }
+        thread::sleep(Duration::from_millis(300));
     }
+    emit_run_step(app, "adapters", if adapters_ok { "ok" } else { "failed" });
 
     emit_status(app, "waiting");
     emit_log(app, "Waiting 5 seconds for network to settle...");
@@ -395,6 +521,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     match launch_result {
         Ok(mut child) => {
             emit_log(app, format!("Game PID: {}", child.id()));
+            emit_run_step(app, "launch", "ok");
             emit_status(app, "racing");
             emit_log(app, "Waiting for game to close...");
             let _ = child.wait();
@@ -402,6 +529,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
         }
         Err(e) => {
             emit_log(app, format!("ERROR: Failed to launch game: {e}"));
+            emit_run_step(app, "launch", "failed");
         }
     }
 
@@ -472,6 +600,24 @@ fn enable_adapter(name: String) -> Result<(), String> {
     result
 }
 
+#[tauri::command]
+fn close_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn show_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = position_window_bottom_right(&window);
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -490,16 +636,7 @@ fn main() {
                 .on_menu_event(move |app, event| {
                     match event.id().as_ref() {
                         "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = position_window_bottom_right(&window);
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                            if let Some(id) = app.state::<AppState>().tray_id.lock().unwrap().as_ref() {
-                                if let Some(tray) = app.tray_by_id(id) {
-                                    let _ = tray.set_visible(false);
-                                }
-                            }
+                            let _ = show_window(app.clone());
                         }
                         "quit" => {
                             app.exit(0);
@@ -512,16 +649,7 @@ fn main() {
                         tauri::tray::TrayIconEvent::Click { button, .. } => {
                             if button == tauri::tray::MouseButton::Left {
                                 let app = tray.app_handle();
-                                if let Some(window) = app.get_webview_window("main") {
-                                    let _ = position_window_bottom_right(&window);
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
-                                if let Some(id) = app.state::<AppState>().tray_id.lock().unwrap().as_ref() {
-                                    if let Some(t) = app.tray_by_id(id) {
-                                        let _ = t.set_visible(false);
-                                    }
-                                }
+                                let _ = show_window(app.clone());
                             }
                         }
                         _ => {}
@@ -535,31 +663,23 @@ fn main() {
                 *state.tray_id.lock().unwrap() = Some(tray_id.clone());
             }
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.hide();
                 let _ = position_window_bottom_right(&window);
                 let w = window.clone();
-                let handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     match event {
                         WindowEvent::CloseRequested { api, .. } => {
                             api.prevent_close();
                             let _ = w.hide();
-                            if let Some(id) = handle.state::<AppState>().tray_id.lock().unwrap().as_ref() {
-                                if let Some(tray) = handle.tray_by_id(id) {
-                                    let _ = tray.set_visible(true);
-                                }
-                            }
-                        }
-                        WindowEvent::Focused(false) => {
-                            let _ = w.hide();
-                            if let Some(id) = handle.state::<AppState>().tray_id.lock().unwrap().as_ref() {
-                                if let Some(tray) = handle.tray_by_id(id) {
-                                    let _ = tray.set_visible(true);
-                                }
-                            }
                         }
                         _ => {}
                     }
+                });
+
+                let win = window.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(500));
+                    let _ = win.show();
+                    let _ = win.set_focus();
                 });
             }
 
@@ -572,7 +692,9 @@ fn main() {
             is_running,
             list_adapters,
             disable_adapter,
-            enable_adapter
+            enable_adapter,
+            close_window,
+            show_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running Blur LAN Launcher");

@@ -4,7 +4,7 @@ export interface NetworkAdapter {
   type: string;
 }
 
-export type AdapterPhase = "pending" | "processing" | "done";
+export type AdapterPhase = "pending" | "processing" | "done" | "failed";
 
 export interface AdapterProgress {
   adapter: NetworkAdapter;
