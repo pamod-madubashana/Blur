@@ -24,15 +24,12 @@ export interface RunStep {
   status: "ok" | "failed";
 }
 
-export type CheckPhase = "idle" | "file" | "firewall" | "discovering";
-
 export function useBlurMachine() {
   const [state, setState] = useState<AppState>("ready");
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [allItems, setAllItems] = useState<AdapterProgress[]>([]);
   const [completed, setCompleted] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [checkPhase, setCheckPhase] = useState<CheckPhase>("idle");
   const [fileItems, setFileItems] = useState<FileCheckItem[]>([]);
   const [fileCheckDone, setFileCheckDone] = useState(false);
   const [firewallItems, setFirewallItems] = useState<FirewallCheckItem[]>([]);
@@ -71,11 +68,10 @@ export function useBlurMachine() {
       const s = event.payload;
       console.log("[blurMachine] status:", s);
 
-      if (s === "checking") {
-        setState("checking");
+      if (s === "preparing") {
+        setState("preparing");
         setCompleted(false);
         setClosing(false);
-        setCheckPhase("file");
         setFileItems([]);
         setFileCheckDone(false);
         setFirewallItems([]);
@@ -83,14 +79,6 @@ export function useBlurMachine() {
         setDiscoveringItems([]);
         setDiscoveringCheckDone(false);
         setStepResults([]);
-      } else if (s === "firewall") {
-        setState("checking");
-        setCheckPhase("firewall");
-        setFileCheckDone(true);
-      } else if (s === "discovering") {
-        setState("checking");
-        setCheckPhase("discovering");
-        setFirewallCheckDone(true);
       } else if (s === "disabling") {
         setState("disabling");
         setCompleted(false);
@@ -112,10 +100,14 @@ export function useBlurMachine() {
           setState("ready");
           setCompleted(false);
           setClosing(false);
-          setCheckPhase("idle");
-          setAllItems([]);
           setFileItems([]);
           setFileCheckDone(false);
+          setFirewallItems([]);
+          setFirewallCheckDone(false);
+          setDiscoveringItems([]);
+          setDiscoveringCheckDone(false);
+          setStepResults([]);
+          setAllItems([]);
           busy.current = false;
         }, 300);
       }
@@ -227,7 +219,7 @@ export function useBlurMachine() {
   const mode = state === "enabling" ? "enable" : "disable";
   const adapterModalOpen = state === "disabling" || state === "enabling";
   const launchModalOpen = state === "launching";
-  const fileCheckModalOpen = state === "checking";
+  const preparingOpen = state === "preparing";
   const items = allItems.filter((i) => i.adapter.type === "virtual");
   const totalVirtual = items.length;
   const doneVirtual = items.filter((i) => i.phase === "done" || i.phase === "failed").length;
@@ -256,5 +248,5 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } as const;
 }

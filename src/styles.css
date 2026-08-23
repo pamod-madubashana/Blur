@@ -97,6 +97,11 @@
 @layer base {
   * {
     border-color: var(--color-border);
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
   }
 
   body {

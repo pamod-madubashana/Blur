@@ -2,8 +2,7 @@ import { BlurControl } from "@/components/BlurControl";
 import { CyberBackground } from "@/components/CyberBackground";
 import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
-import { FileCheckModal } from "@/components/FileCheckModal";
-import { FirewallCheckModal } from "@/components/FirewallCheckModal";
+import { PreparingModal } from "@/components/PreparingModal";
 import { StatusPanel } from "@/components/StatusPanel";
 import { UpdateIndicator } from "@/components/UpdateIndicator";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
@@ -12,7 +11,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
   const [version, setVersion] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -22,10 +21,6 @@ export default function App() {
   }, []);
 
   const running = state === "running" || state === "enabling";
-  const rulesModalOpen = state === "checking" && (checkPhase === "firewall" || checkPhase === "discovering");
-
-  const ruleItems = checkPhase === "discovering" ? discoveringItems : firewallItems;
-  const rulesDone = checkPhase === "discovering" ? discoveringCheckDone : firewallCheckDone;
 
   return (
     <main
@@ -65,15 +60,14 @@ export default function App() {
         <span>v{version}</span>
       </footer>
 
-      {checkPhase === "file" && (
-        <FileCheckModal items={fileItems} done={fileCheckDone} closing={closing} />
-      )}
-
-      {rulesModalOpen && (
-        <FirewallCheckModal
-          title={checkPhase === "discovering" ? "SHARING" : "FIREWALL"}
-          items={ruleItems}
-          done={rulesDone}
+      {preparingOpen && (
+        <PreparingModal
+          fileItems={fileItems}
+          fileDone={fileCheckDone}
+          firewallItems={firewallItems}
+          firewallDone={firewallCheckDone}
+          discoveringItems={discoveringItems}
+          discoveringDone={discoveringCheckDone}
           closing={closing}
         />
       )}

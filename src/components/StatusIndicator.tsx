@@ -2,7 +2,7 @@ import type { AppState } from "@/types/adapter";
 
 const LABEL: Record<AppState, string> = {
   ready: "STANDBY · NETWORK ONLINE",
-  checking: "CHECKING SYSTEM...",
+  preparing: "PREPARING SYSTEM...",
   disabling: "ISOLATING NETWORK",
   launching: "LAUNCHING GAME...",
   running: "GAME RUNNING · NETWORK ISOLATED",
