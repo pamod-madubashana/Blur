@@ -55,9 +55,19 @@ export default function App() {
       {/* update indicator */}
       <UpdateIndicator onStatusChange={setUpdating} />
 
-      {/* version */}
-      <footer className="relative z-10 flex justify-end px-7 pb-5 font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">
-        <span>v{version}</span>
+      {/* footer */}
+      <footer className="relative z-10 flex items-center justify-between px-7 pb-5">
+        <a
+          href="https://github.com/pamod-madubashana/Blur"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25 transition-colors hover:text-white/50"
+        >
+          GitHub
+        </a>
+        <span className="font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">
+          v{version}
+        </span>
       </footer>
 
       {preparingOpen && (
