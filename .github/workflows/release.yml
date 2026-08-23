@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   validate:
@@ -195,54 +196,35 @@ jobs:
           git tag -a "v$VERSION" -m "Release v$VERSION"
           git push origin "v$VERSION"
 
-      - name: Generate release notes
-        id: notes
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
 
-          PREV_DATE=$(gh release list --limit 100 --json tagName,publishedAt \
-            --jq '[.[] | select(.tagName != "v'"$VERSION"'")] | sort_by(.publishedAt) | last | .publishedAt // ""' 2>/dev/null || echo "")
+          gh release create "v$VERSION" artifacts/**/* \
+            --repo "${{ github.repository }}" \
+            --title "Release v${VERSION}" \
+            --generate-notes
 
-          if [ -n "$PREV_DATE" ]; then
-            # Convert ISO date to YYYY-MM-DD for search query
-            SEARCH_DATE=$(echo "$PREV_DATE" | cut -d'T' -f1)
-          else
-            SEARCH_DATE="2020-01-01"
-          fi
-
-          PR_LIST=$(gh pr list --state merged --search "merged>=${SEARCH_DATE}" --json number,title,author \
-            --jq '.[] | "- #" + (.number | tostring) + " " + .title + " (by @" + .author.login + ")"' 2>/dev/null || echo "")
-
-          if [ -z "$PR_LIST" ]; then
-            PR_LIST="_No pull requests merged since last release._"
-          fi
-
-          {
-            echo "body<<RELEASE_BODY"
-            echo "## What's Changed"
-            echo ""
-            echo "$PR_LIST"
-            echo ""
-            echo "## Installation"
-            echo "Download the appropriate file for Windows:"
-            echo "- **Installer**: `.exe` installer"
-            echo "- **Portable**: `.exe` standalone executable (auto-updates supported)"
-            echo ""
-            echo "## Auto-Update"
-            echo "The portable executable includes a built-in updater."
-            echo "When a new version is released, the app will notify you and update automatically."
-            echo "RELEASE_BODY"
-          } >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ needs.validate.outputs.version }}
-          name: Release v${{ needs.validate.outputs.version }}
-          body: ${{ steps.notes.outputs.body }}
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/**/*
+      - name: Append custom release sections
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+
+          gh release view "v$VERSION" --json body --jq '.body' > /tmp/current.md
+
+          cat >> /tmp/current.md << 'EOF'
+
+          ## Installation
+          Download the appropriate file for Windows:
+          - **Installer**: `.exe` installer
+          - **Portable**: `.exe` standalone executable (auto-updates supported)
+
+          ## Auto-Update
+          The portable executable includes a built-in updater.
+          When a new version is released, the app will notify you and update automatically.
+          EOF
+
+          gh release edit "v$VERSION" --notes-file /tmp/current.md
