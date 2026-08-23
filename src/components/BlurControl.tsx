@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MorphLabel } from "./MorphLabel";
 import type { AppState } from "@/types/adapter";
 
@@ -12,6 +12,15 @@ export function BlurControl({ state, onActivate, disabled }: Props) {
   const [hover, setHover] = useState(false);
   const interactive = (state === "ready" || state === "running") && !disabled;
   const running = state === "running" || state === "enabling";
+  const ringRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!ringRef.current) return;
+    const anims = ringRef.current.getAnimations();
+    for (const anim of anims) {
+      anim.playbackRate = hover && interactive ? 3 : 1;
+    }
+  }, [hover, interactive]);
 
   const base = running ? "RUNNING" : "BLUR";
   const hovered = running ? "RUNNING" : "START";
@@ -69,12 +78,13 @@ export function BlurControl({ state, onActivate, disabled }: Props) {
       />
       {/* segmented ring */}
       <span
+        ref={ringRef}
         className="pointer-events-none absolute inset-[-2%] rounded-full"
         style={{
           background: `conic-gradient(from 0deg, transparent 0deg 28deg, color-mix(in oklab, var(--accent-bright) 75%, transparent) 34deg 52deg, transparent 58deg 148deg, color-mix(in oklab, var(--accent) 65%, transparent) 154deg 186deg, transparent 192deg 300deg, color-mix(in oklab, var(--accent-bright) 55%, transparent) 306deg 322deg, transparent 328deg 360deg)`,
           WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 2px))",
           mask: "radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 2px))",
-          animation: `blur-spin ${hover && interactive ? "5s" : "12s"} linear infinite`,
+          animation: "blur-spin 12s linear infinite",
         }}
       />
       {/* tick ring */}
