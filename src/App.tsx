@@ -56,7 +56,7 @@ export default function App() {
       <UpdateIndicator onStatusChange={setUpdating} />
 
       {/* footer */}
-      <footer className="relative z-10 flex items-center justify-between px-7 pb-5">
+      <footer className="relative z-10 flex items-center justify-between px-7 pb-7">
         <a
           href="https://github.com/pamod-madubashana/Blur"
           target="_blank"
