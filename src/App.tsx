@@ -2,8 +2,7 @@ import { BlurControl } from "@/components/BlurControl";
 import { CyberBackground } from "@/components/CyberBackground";
 import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
-import { FileCheckModal } from "@/components/FileCheckModal";
-import { FirewallCheckModal } from "@/components/FirewallCheckModal";
+import { PreparingModal } from "@/components/PreparingModal";
 import { StatusPanel } from "@/components/StatusPanel";
 import { UpdateIndicator } from "@/components/UpdateIndicator";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
@@ -12,7 +11,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, fileCheckModalOpen, checkPhase, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
     useBlurMachine();
   const [version, setVersion] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -22,10 +21,6 @@ export default function App() {
   }, []);
 
   const running = state === "running" || state === "enabling";
-  const rulesModalOpen = state === "checking" && (checkPhase === "firewall" || checkPhase === "discovering");
-
-  const ruleItems = checkPhase === "discovering" ? discoveringItems : firewallItems;
-  const rulesDone = checkPhase === "discovering" ? discoveringCheckDone : firewallCheckDone;
 
   return (
     <main
@@ -60,20 +55,29 @@ export default function App() {
       {/* update indicator */}
       <UpdateIndicator onStatusChange={setUpdating} />
 
-      {/* version */}
-      <footer className="relative z-10 flex justify-end px-7 pb-5 font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">
-        <span>v{version}</span>
+      {/* footer */}
+      <footer className="relative z-10 flex items-center justify-between px-7 pb-7">
+        <a
+          href="https://github.com/pamod-madubashana/Blur"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25 transition-colors hover:text-white/50"
+        >
+          GitHub
+        </a>
+        <span className="font-mono-cyber text-[9.5px] tracking-[0.28em] text-white/25">
+          v{version}
+        </span>
       </footer>
 
-      {checkPhase === "file" && (
-        <FileCheckModal items={fileItems} done={fileCheckDone} closing={closing} />
-      )}
-
-      {rulesModalOpen && (
-        <FirewallCheckModal
-          title={checkPhase === "discovering" ? "SHARING" : "FIREWALL"}
-          items={ruleItems}
-          done={rulesDone}
+      {preparingOpen && (
+        <PreparingModal
+          fileItems={fileItems}
+          fileDone={fileCheckDone}
+          firewallItems={firewallItems}
+          firewallDone={firewallCheckDone}
+          discoveringItems={discoveringItems}
+          discoveringDone={discoveringCheckDone}
           closing={closing}
         />
       )}

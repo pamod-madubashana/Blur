@@ -26,6 +26,8 @@ struct AppState {
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
     game_path: Option<String>,
+    #[serde(default)]
+    online_fix_done: bool,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -389,6 +391,21 @@ fn get_saved_path(app: AppHandle) -> Option<String> {
 }
 
 #[tauri::command]
+fn get_online_fix_done(app: AppHandle) -> bool {
+    let cfg = load_config(&app);
+    cfg.online_fix_done
+}
+
+fn mark_online_fix_done(app: &AppHandle) {
+    let mut cfg = load_config(app);
+    if !cfg.online_fix_done {
+        cfg.online_fix_done = true;
+        let _ = save_config(app, &cfg);
+        emit_log(app, "Saved online_fix_done=true to config.");
+    }
+}
+
+#[tauri::command]
 async fn pick_game_path(app: AppHandle) -> Option<String> {
     let file = app
         .dialog()
@@ -399,7 +416,7 @@ async fn pick_game_path(app: AppHandle) -> Option<String> {
 
     if let Some(path) = file {
         let path_str = path.to_string();
-        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()) });
+        let _ = save_config(&app, &Config { game_path: Some(path_str.clone()), ..Default::default() });
         Some(path_str)
     } else {
         None
@@ -407,12 +424,12 @@ async fn pick_game_path(app: AppHandle) -> Option<String> {
 }
 
 #[tauri::command]
-fn is_running(state: State<AppState>) -> bool {
+fn is_running(state: State<'_, AppState>) -> bool {
     state.running.load(Ordering::SeqCst)
 }
 
 #[tauri::command]
-fn start_lan_mode(app: AppHandle, state: State<AppState>, game_path: String) -> Result<(), String> {
+async fn start_lan_mode(app: AppHandle, state: State<'_, AppState>, game_path: String) -> Result<(), String> {
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("Already running.".into());
     }
@@ -420,7 +437,7 @@ fn start_lan_mode(app: AppHandle, state: State<AppState>, game_path: String) -> 
     let running_flag = state.running.clone();
     let app_handle = app.clone();
 
-    thread::spawn(move || {
+    tokio::task::spawn_blocking(move || {
         let result = run_sequence(&app_handle, &game_path);
         if let Err(e) = result {
             emit_log(&app_handle, format!("ERROR: {e}"));
@@ -440,44 +457,76 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     let default_dir = PathBuf::from(".");
     let work_dir = path_buf.parent().unwrap_or(&default_dir);
 
-    // Check and copy online fix files before disabling adapters
-    emit_status(app, "checking");
-    thread::sleep(Duration::from_millis(500));
-    match check_and_copy_files(app, &work_dir.to_string_lossy()) {
-        Ok(()) => emit_run_step(app, "files", "ok"),
-        Err(e) => {
-            emit_log(app, format!("File check failed: {e}"));
-            emit_run_step(app, "files", "failed");
-        }
-    }
-    thread::sleep(Duration::from_secs(2));
+    // --- Phase 1: Parallel preparation (file check + firewall + discovering) ---
+    emit_status(app, "preparing");
 
-    // Check and enable firewall rules
-    emit_status(app, "firewall");
-    thread::sleep(Duration::from_secs(1));
-    match check_firewall_rules(app) {
-        Ok(all_ok) => {
-            emit_run_step(app, "firewall", if all_ok { "ok" } else { "failed" });
-        }
-        Err(e) => {
-            emit_log(app, format!("Firewall check failed: {e}"));
-            emit_run_step(app, "firewall", "failed");
-        }
-    }
-    thread::sleep(Duration::from_millis(600));
+    let skip_files = {
+        let cfg = load_config(app);
+        cfg.online_fix_done
+    };
 
-    // Check and enable sharing settings
-    emit_status(app, "discovering");
-    match discovering::check_and_enable_discovering(app) {
-        Ok(all_ok) => {
-            emit_run_step(app, "discovering", if all_ok { "ok" } else { "failed" });
+    let app_file = app.clone();
+    let work_dir_file = work_dir.to_string_lossy().to_string();
+    let thread_files = thread::spawn(move || {
+        if skip_files {
+            emit_log(&app_file, "Online fix already done - skipping file check.");
+            emit_file_check(&app_file, "Online Fix", "ok");
+            emit_file_check_done(&app_file, true);
+            emit_run_step(&app_file, "files", "ok");
+            return Ok(());
         }
-        Err(e) => {
-            emit_log(app, format!("Discovering check failed: {e}"));
-            emit_run_step(app, "discovering", "failed");
+        match check_and_copy_files(&app_file, &work_dir_file) {
+            Ok(()) => {
+                mark_online_fix_done(&app_file);
+                emit_run_step(&app_file, "files", "ok");
+                Ok(())
+            }
+            Err(e) => {
+                emit_log(&app_file, format!("File check failed: {e}"));
+                emit_run_step(&app_file, "files", "failed");
+                Err(e)
+            }
         }
+    });
+
+    let app_fw = app.clone();
+    let thread_firewall = thread::spawn(move || {
+        match check_firewall_rules(&app_fw) {
+            Ok(all_ok) => {
+                emit_run_step(&app_fw, "firewall", if all_ok { "ok" } else { "failed" });
+                Ok(all_ok)
+            }
+            Err(e) => {
+                emit_log(&app_fw, format!("Firewall check failed: {e}"));
+                emit_run_step(&app_fw, "firewall", "failed");
+                Err(e)
+            }
+        }
+    });
+
+    let app_disc = app.clone();
+    let thread_discovering = thread::spawn(move || {
+        match discovering::check_and_enable_discovering(&app_disc) {
+            Ok(all_ok) => {
+                emit_run_step(&app_disc, "discovering", if all_ok { "ok" } else { "failed" });
+                Ok(all_ok)
+            }
+            Err(e) => {
+                emit_log(&app_disc, format!("Discovering check failed: {e}"));
+                emit_run_step(&app_disc, "discovering", "failed");
+                Err(e)
+            }
+        }
+    });
+
+    // Wait for all three parallel checks
+    let files_result = thread_files.join().unwrap_or(Err("File check thread panicked".into()));
+    let _ = thread_firewall.join().unwrap_or(Err("Firewall thread panicked".into()));
+    let _ = thread_discovering.join().unwrap_or(Err("Discovering thread panicked".into()));
+
+    if files_result.is_err() {
+        emit_log(app, "File check had errors - continuing anyway.");
     }
-    thread::sleep(Duration::from_millis(600));
 
     // Disable virtual adapters (VMware, VirtualBox, etc.)
     emit_log(app, "Scanning for virtual adapters to disable...");
@@ -711,6 +760,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_saved_path,
+            get_online_fix_done,
             pick_game_path,
             start_lan_mode,
             is_running,
