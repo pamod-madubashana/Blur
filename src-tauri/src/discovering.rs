@@ -500,30 +500,6 @@ fn get_connected_networks() -> Result<Vec<NetworkInfo>, String> {
 
 // --- Structured result types ---
 
-#[derive(Clone, serde::Serialize)]
-pub struct CheckResult {
-    pub ok: bool,
-    pub error: Option<String>,
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct SharingConfigurationResult {
-    pub smb_signing: CheckResult,
-    pub smb_encryption: CheckResult,
-    pub network_discovery: CheckResult,
-    pub file_sharing: CheckResult,
-    pub public_folder_sharing: CheckResult,
-    pub password_protected_sharing: CheckResult,
-    pub services: Vec<ServiceCheckResult>,
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct ServiceCheckResult {
-    pub name: String,
-    pub display_name: String,
-    pub result: CheckResult,
-}
-
 /// Full sharing state for the frontend (read-side).
 #[derive(Clone, serde::Serialize)]
 pub struct SharingState {
