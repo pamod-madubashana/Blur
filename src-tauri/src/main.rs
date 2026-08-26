@@ -32,7 +32,7 @@ struct Config {
     update_restart: bool,
 }
 
-pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -41,7 +41,7 @@ pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("blur-launcher.config.json"))
 }
 
-pub fn load_config(app: &AppHandle) -> Config {
+pub(crate) fn load_config(app: &AppHandle) -> Config {
     if let Ok(path) = config_path(app) {
         if let Ok(text) = fs::read_to_string(&path) {
             if let Ok(cfg) = serde_json::from_str::<Config>(&text) {
@@ -52,7 +52,7 @@ pub fn load_config(app: &AppHandle) -> Config {
     Config::default()
 }
 
-pub fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
+pub(crate) fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let path = config_path(app)?;
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     fs::write(path, text).map_err(|e| e.to_string())
