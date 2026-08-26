@@ -40,6 +40,7 @@ export function useBlurMachine() {
   const busy = useRef(false);
   const gamePath = useRef<string | null>(null);
   const adaptersRef = useRef<NetworkAdapter[]>([]);
+  const autoStarted = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -47,7 +48,19 @@ export function useBlurMachine() {
     async function init() {
       try {
         const savedPath = await invoke<string | null>("get_saved_path");
-        if (savedPath && alive) gamePath.current = savedPath;
+        if (savedPath && alive) {
+          gamePath.current = savedPath;
+
+          if (!autoStarted.current) {
+            autoStarted.current = true;
+            busy.current = true;
+            invoke("start_lan_mode", { gamePath: savedPath }).catch((e) => {
+              console.error("[blurMachine] auto-start failed:", e);
+              busy.current = false;
+              setState("ready");
+            });
+          }
+        }
 
         const list = await adapterService.listAdapters();
         if (alive) {
