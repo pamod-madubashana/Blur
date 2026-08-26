@@ -265,6 +265,11 @@ pub fn install_update(download_path: &PathBuf, app: &tauri::AppHandle) -> Result
         message: "Restarting...".to_string(),
     });
 
+    // Mark config that we're restarting for an update
+    let mut cfg = crate::load_config(app);
+    cfg.update_restart = true;
+    let _ = crate::save_config(app, &cfg);
+
     Command::new(&target_exe)
         .spawn()
         .map_err(|e| format!("Failed to launch new version: {e}"))?;
