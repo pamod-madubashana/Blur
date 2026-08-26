@@ -506,7 +506,7 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
 
     let app_disc = app.clone();
     let thread_discovering = thread::spawn(move || {
-        match discovering::check_and_enable_discovering(&app_disc) {
+        match discovering::check_and_enable_discovering(&app_disc, false) {
             Ok(all_ok) => {
                 emit_run_step(&app_disc, "discovering", if all_ok { "ok" } else { "failed" });
                 Ok(all_ok)
@@ -679,6 +679,12 @@ async fn start_update(app: AppHandle) -> Result<(), String> {
     let download_path = updater::download_update(&info, &app).await?;
     updater::install_update(&download_path, &app)
 }
+
+#[tauri::command]
+fn get_sharing_state(app: AppHandle) -> Result<discovering::SharingState, String> {
+    discovering::get_sharing_state(&app)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -770,7 +776,8 @@ fn main() {
             close_window,
             show_window,
             check_update,
-            start_update
+            start_update,
+            get_sharing_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running Blur LAN Launcher");
