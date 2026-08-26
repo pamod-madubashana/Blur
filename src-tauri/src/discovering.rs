@@ -1,7 +1,7 @@
 use tauri::Emitter;
 use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{VARIANT_TRUE, VARIANT_FALSE};
+use windows::Win32::Foundation::VARIANT_TRUE;
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_LOCAL_MACHINE,
@@ -12,7 +12,7 @@ use windows::Win32::System::Services::{
     QueryServiceStatusEx, StartServiceW, SC_HANDLE, SC_STATUS_PROCESS_INFO,
     SERVICE_AUTO_START, SERVICE_CHANGE_CONFIG, SERVICE_QUERY_STATUS, SERVICE_START,
     SERVICE_START_PENDING, SERVICE_STATUS_PROCESS, SERVICE_STOPPED, SERVICE_RUNNING,
-    SERVICE_NO_CHANGE, ENUM_SERVICE_TYPE,
+    SERVICE_NO_CHANGE, SERVICE_ERROR, ENUM_SERVICE_TYPE,
 };
 use windows::Win32::NetworkManagement::WindowsFirewall::{INetFwPolicy2, NetFwPolicy2};
 use windows::Win32::Networking::NetworkListManager::{
@@ -23,7 +23,7 @@ use windows::Win32::Networking::NetworkListManager::{
     NLM_NETWORK_CATEGORY_DOMAIN_AUTHENTICATED,
 };
 use windows::Win32::Storage::FileSystem::{
-    NetShareAdd, NetShareSetInfo, NetShareDel,
+    NetShareAdd, NetShareDel,
     SHARE_INFO_502, STYPE_DISKTREE, ACCESS_READ,
 };
 use windows::Win32::Security::PSECURITY_DESCRIPTOR;
@@ -215,7 +215,7 @@ unsafe fn set_service_startup_type(scm: SC_HANDLE, name: &str) -> Result<(), Str
         svc,
         ENUM_SERVICE_TYPE(SERVICE_NO_CHANGE), // service type unchanged
         SERVICE_AUTO_START,                    // start type
-        ENUM_SERVICE_TYPE(SERVICE_NO_CHANGE),  // error control unchanged (SERVICE_NO_CHANGE = 0xFFFFFFFF)
+        SERVICE_ERROR(SERVICE_NO_CHANGE),      // error control unchanged (SERVICE_NO_CHANGE = 0xFFFFFFFF)
         PCWSTR::null(),                       // binary path unchanged
         PCWSTR::null(),                       // load order group unchanged
         None,                                 // tag id unchanged
@@ -311,7 +311,7 @@ fn ensure_public_folder_share(app: &AppHandle) -> Result<(), String> {
     let path_wide: Vec<u16> = public_path.encode_utf16().chain(std::iter::once(0)).collect();
     let remark: Vec<u16> = "Public Files\0".encode_utf16().collect();
 
-    let mut info = SHARE_INFO_502 {
+    let info = SHARE_INFO_502 {
         shi502_netname: windows::core::PWSTR(share_name.as_ptr() as *mut u16),
         shi502_type: STYPE_DISKTREE,
         shi502_remark: windows::core::PWSTR(remark.as_ptr() as *mut u16),
@@ -543,7 +543,7 @@ pub struct ServiceInfo {
 }
 
 /// Read-side: check current sharing state without modifying anything.
-pub fn get_sharing_state(app: &AppHandle) -> Result<SharingState, String> {
+pub fn get_sharing_state(_app: &AppHandle) -> Result<SharingState, String> {
     let mut nd_enabled = false;
     let mut fs_enabled = false;
 
@@ -567,17 +567,12 @@ pub fn get_sharing_state(app: &AppHandle) -> Result<SharingState, String> {
     }
 
     // Check public folder share
-    let public_share_exists = unsafe {
-        let share_name: Vec<u16> = "Public\0".encode_utf16().collect();
-        // Attempt to query — if NetShareGetInfo returns 0, it exists
-        // For simplicity, check if the path exists as a proxy
-        std::path::Path::new(
-            &std::env::var("SystemDrive")
-                .map(|d| format!("{d}\\Users\\Public"))
-                .unwrap_or_else(|_| "C:\\Users\\Public".to_string()),
-        )
-        .exists()
-    };
+    let public_share_exists = std::path::Path::new(
+        &std::env::var("SystemDrive")
+            .map(|d| format!("{d}\\Users\\Public"))
+            .unwrap_or_else(|_| "C:\\Users\\Public".to_string()),
+    )
+    .exists();
 
     // Check forceguest
     let password_protected = unsafe {
