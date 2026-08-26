@@ -24,6 +24,14 @@ export interface RunStep {
   status: "ok" | "failed";
 }
 
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  download_url: string;
+  digest: string;
+  size: number;
+}
+
 export function useBlurMachine() {
   const [state, setState] = useState<AppState>("ready");
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
@@ -37,6 +45,8 @@ export function useBlurMachine() {
   const [discoveringItems, setDiscoveringItems] = useState<DiscoveringCheckItem[]>([]);
   const [discoveringCheckDone, setDiscoveringCheckDone] = useState(false);
   const [stepResults, setStepResults] = useState<RunStep[]>([]);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdatePopup, setShowUpdatePopup] = useState(false);
   const busy = useRef(false);
   const gamePath = useRef<string | null>(null);
   const adaptersRef = useRef<NetworkAdapter[]>([]);
@@ -51,7 +61,8 @@ export function useBlurMachine() {
         if (savedPath && alive) {
           gamePath.current = savedPath;
 
-          if (!autoStarted.current) {
+          const isRestart = await invoke<boolean>("is_update_restart");
+          if (!isRestart && !autoStarted.current) {
             autoStarted.current = true;
             busy.current = true;
             invoke("start_lan_mode", { gamePath: savedPath }).catch((e) => {
@@ -122,6 +133,12 @@ export function useBlurMachine() {
           setStepResults([]);
           setAllItems([]);
           busy.current = false;
+
+          // Check for update after game close
+          invoke<UpdateInfo>("check_update_available").then((info) => {
+            setUpdateInfo(info);
+            setShowUpdatePopup(true);
+          }).catch(() => {});
         }, 300);
       }
     });
@@ -261,5 +278,10 @@ export function useBlurMachine() {
     });
   }, [state]);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } as const;
+  const dismissUpdate = useCallback(() => {
+    setShowUpdatePopup(false);
+    setUpdateInfo(null);
+  }, []);
+
+  return { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, updateInfo, showUpdatePopup, dismissUpdate } as const;
 }

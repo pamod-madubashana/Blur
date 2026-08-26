@@ -4,17 +4,15 @@ import { LaunchModal } from "@/components/LaunchModal";
 import { OperationModal } from "@/components/OperationModal";
 import { PreparingModal } from "@/components/PreparingModal";
 import { StatusPanel } from "@/components/StatusPanel";
-import { UpdateIndicator } from "@/components/UpdateIndicator";
+import { UpdatePopup } from "@/components/UpdatePopup";
 import { useBlurMachine } from "@/hooks/useBlurMachine";
-import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, updateInfo, showUpdatePopup, dismissUpdate } =
     useBlurMachine();
   const [version, setVersion] = useState("");
-  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
@@ -34,26 +32,17 @@ export default function App() {
         <span className="font-display text-[15px] font-bold tracking-[0.5em] text-white/90 text-glow">
           BLUR
         </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => invoke("close_window")}
-            className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-white/10"
-            title="Close"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-white/50" />
-            </svg>
-          </button>
-        </div>
       </header>
 
       {/* circle */}
       <section className="relative z-10 flex flex-1 items-center justify-center">
-        <BlurControl state={state} onActivate={activate} disabled={updating} />
+        <BlurControl state={state} onActivate={activate} />
       </section>
 
-      {/* update indicator */}
-      <UpdateIndicator onStatusChange={setUpdating} />
+      {/* update popup */}
+      {showUpdatePopup && updateInfo && (
+        <UpdatePopup updateInfo={updateInfo} onDismiss={dismissUpdate} />
+      )}
 
       {/* footer */}
       <footer className="relative z-10 flex items-center justify-between px-7 pb-7">

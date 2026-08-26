@@ -28,9 +28,11 @@ struct Config {
     game_path: Option<String>,
     #[serde(default)]
     online_fix_done: bool,
+    #[serde(default)]
+    update_restart: bool,
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -39,7 +41,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("blur-launcher.config.json"))
 }
 
-fn load_config(app: &AppHandle) -> Config {
+pub fn load_config(app: &AppHandle) -> Config {
     if let Ok(path) = config_path(app) {
         if let Ok(text) = fs::read_to_string(&path) {
             if let Ok(cfg) = serde_json::from_str::<Config>(&text) {
@@ -50,7 +52,7 @@ fn load_config(app: &AppHandle) -> Config {
     Config::default()
 }
 
-fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
+pub fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let path = config_path(app)?;
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     fs::write(path, text).map_err(|e| e.to_string())
@@ -394,6 +396,22 @@ fn get_saved_path(app: AppHandle) -> Option<String> {
 fn get_online_fix_done(app: AppHandle) -> bool {
     let cfg = load_config(&app);
     cfg.online_fix_done
+}
+
+#[tauri::command]
+fn is_update_restart(app: AppHandle) -> bool {
+    let mut cfg = load_config(&app);
+    if cfg.update_restart {
+        cfg.update_restart = false;
+        let _ = save_config(&app, &cfg);
+        return true;
+    }
+    false
+}
+
+#[tauri::command]
+async fn check_update_available() -> Result<updater::UpdateInfo, String> {
+    updater::check_for_update().await
 }
 
 fn mark_online_fix_done(app: &AppHandle) {
@@ -753,20 +771,12 @@ fn main() {
                 });
             }
 
-            // Background update check
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                if let Ok(info) = updater::check_for_update().await {
-                    let _ = app_handle.emit("update_available", info);
-                }
-            });
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_saved_path,
             get_online_fix_done,
+            is_update_restart,
             pick_game_path,
             start_lan_mode,
             is_running,
@@ -776,6 +786,7 @@ fn main() {
             close_window,
             show_window,
             check_update,
+            check_update_available,
             start_update,
             get_sharing_state
         ])
