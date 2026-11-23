@@ -90,7 +90,7 @@ export default function App() {
         <StatusPanel steps={stepResults} />
       )}
 
-      {running && <LanPlayersPanel lan={lan} />}
+      <LanPlayersPanel lan={lan} />
     </main>
   );
 }
