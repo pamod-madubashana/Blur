@@ -220,10 +220,6 @@ impl LanMonitor {
         }
     }
 
-    pub fn stop(mut self) {
-        self.shutdown();
-    }
-
     fn shutdown(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(handle) = self.handle.take() {

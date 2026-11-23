@@ -166,6 +166,13 @@ fn start_anydesk() {
     let _ = run_powershell("Start-Service -Name AnyDesk -ErrorAction SilentlyContinue");
 }
 
+pub fn detect_address() -> Result<String, String> {
+    let candidates = list_candidates()?;
+    let target = select_target(&candidates)
+        .ok_or_else(|| "no usable IPv4 LAN adapter found".to_string())?;
+    Ok(format_ipv4(target.address))
+}
+
 pub fn prepare(app: &AppHandle, work_dir: &Path) -> Result<(BridgeGuard, BridgeStatus), String> {
     log(app, "LAN bridge: enumerating local adapters...");
     let candidates = list_candidates()?;
