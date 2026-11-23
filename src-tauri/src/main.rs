@@ -8,7 +8,7 @@ mod updater;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -23,6 +23,7 @@ use tauri_plugin_dialog::DialogExt;
 struct AppState {
     running: Arc<AtomicBool>,
     tray_id: std::sync::Mutex<Option<String>>,
+    lan_monitor: std::sync::Mutex<Option<lan_monitor::LanMonitor>>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -203,10 +204,11 @@ fn check_and_copy_files(app: &AppHandle, game_dir: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn check_firewall_rules(app: &AppHandle) -> Result<bool, String> {
+fn check_firewall_rules(app: &AppHandle, game_exe: &Path) -> Result<bool, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let mut all_ok = true;
+    let program = game_exe.to_string_lossy().to_string();
 
     emit_log(app, "Checking firewall rules...");
 
@@ -216,104 +218,74 @@ fn check_firewall_rules(app: &AppHandle) -> Result<bool, String> {
     emit_firewall_check(app, "ICMPv4 Rules", "checking");
     std::thread::sleep(std::time::Duration::from_millis(400));
 
-    // Check if Blur inbound rule exists
-    match Command::new("netsh")
-        .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Inbound"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-    {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("Rule Name") {
-                emit_log(app, "  Inbound rule: OK");
-                emit_firewall_check(app, "Blur LAN Launcher - Inbound", "ok");
-            } else {
-                emit_log(app, "  Inbound rule: MISSING - creating...");
-                emit_firewall_check(app, "Blur LAN Launcher - Inbound", "creating");
-                match Command::new("netsh")
-                    .args([
-                        "advfirewall", "firewall", "add", "rule",
-                        "name=Blur LAN Launcher - Inbound",
-                        "dir=in", "action=allow", "enable=yes",
-                        "program=Blur.exe", "protocol=any",
-                    ])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output()
-                {
-                    Ok(out) => {
-                        let msg = String::from_utf8_lossy(&out.stdout);
-                        if msg.contains("Ok") {
-                            emit_log(app, "  Inbound rule: CREATED");
-                            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "created");
-                        } else {
-                            emit_log(app, format!("  Inbound rule: FAILED - {}", msg.trim()));
-                            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
-                            all_ok = false;
-                        }
-                    }
-                    Err(e) => {
-                        emit_log(app, format!("  Inbound rule: FAILED to create - {e}"));
-                        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
-                        all_ok = false;
-                    }
-                }
-            }
+    // Rebuild our rules so stale ones with a bare "Blur.exe" program path are repaired.
+    let rebuild_rule = |name: &str, args: &[String]| -> bool {
+        let _ = Command::new("netsh")
+            .args(["advfirewall", "firewall", "delete", "rule", &format!("name={name}")])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        let mut full_args: Vec<String> = vec![
+            "advfirewall".into(), "firewall".into(), "add".into(), "rule".into(),
+            format!("name={name}"),
+        ];
+        full_args.extend_from_slice(args);
+        match Command::new("netsh")
+            .args(&full_args)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        {
+            Ok(out) => String::from_utf8_lossy(&out.stdout).to_lowercase().contains("ok"),
+            Err(_) => false,
         }
-        Err(e) => {
-            emit_log(app, format!("  Inbound rule: FAILED to check - {e}"));
-            emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
-            all_ok = false;
-        }
+    };
+
+    emit_firewall_check(app, "Blur LAN Launcher - Inbound", "creating");
+    let in_args = vec![
+        "dir=in".to_string(), "action=allow".to_string(), "enable=yes".to_string(),
+        "protocol=any".to_string(), format!("program={program}"),
+    ];
+    if rebuild_rule("Blur LAN Launcher - Inbound", &in_args) {
+        emit_log(app, "  Inbound rule: OK (full program path)");
+        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "created");
+    } else {
+        emit_log(app, "  Inbound rule: FAILED");
+        emit_firewall_check(app, "Blur LAN Launcher - Inbound", "failed");
+        all_ok = false;
     }
 
-    // Check if Blur outbound rule exists
-    match Command::new("netsh")
-        .args(["advfirewall", "firewall", "show", "rule", "name=Blur LAN Launcher - Outbound"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-    {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("Rule Name") {
-                emit_log(app, "  Outbound rule: OK");
-                emit_firewall_check(app, "Blur LAN Launcher - Outbound", "ok");
-            } else {
-                emit_log(app, "  Outbound rule: MISSING - creating...");
-                emit_firewall_check(app, "Blur LAN Launcher - Outbound", "creating");
-                match Command::new("netsh")
-                    .args([
-                        "advfirewall", "firewall", "add", "rule",
-                        "name=Blur LAN Launcher - Outbound",
-                        "dir=out", "action=allow", "enable=yes",
-                        "program=Blur.exe", "protocol=any",
-                    ])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output()
-                {
-                    Ok(out) => {
-                        let msg = String::from_utf8_lossy(&out.stdout);
-                        if msg.contains("Ok") {
-                            emit_log(app, "  Outbound rule: CREATED");
-                            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "created");
-                        } else {
-                            emit_log(app, format!("  Outbound rule: FAILED - {}", msg.trim()));
-                            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
-                            all_ok = false;
-                        }
-                    }
-                    Err(e) => {
-                        emit_log(app, format!("  Outbound rule: FAILED to create - {e}"));
-                        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
-                        all_ok = false;
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            emit_log(app, format!("  Outbound rule: FAILED to check - {e}"));
-            emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
-            all_ok = false;
-        }
+    emit_firewall_check(app, "Blur LAN Launcher - Outbound", "creating");
+    let out_args = vec![
+        "dir=out".to_string(), "action=allow".to_string(), "enable=yes".to_string(),
+        "protocol=any".to_string(), format!("program={program}"),
+    ];
+    if rebuild_rule("Blur LAN Launcher - Outbound", &out_args) {
+        emit_log(app, "  Outbound rule: OK (full program path)");
+        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "created");
+    } else {
+        emit_log(app, "  Outbound rule: FAILED");
+        emit_firewall_check(app, "Blur LAN Launcher - Outbound", "failed");
+        all_ok = false;
+    }
+
+    // Port-based rules guarantee LAN discovery works even if program matching is unreliable.
+    emit_firewall_check(app, "LAN UDP 50001", "creating");
+    let udp_in = vec![
+        "dir=in".to_string(), "action=allow".to_string(), "enable=yes".to_string(),
+        "protocol=udp".to_string(), "localport=50001".to_string(),
+    ];
+    let udp_out = vec![
+        "dir=out".to_string(), "action=allow".to_string(), "enable=yes".to_string(),
+        "protocol=udp".to_string(), "localport=50001".to_string(),
+    ];
+    let udp_ok = rebuild_rule("Blur LAN - UDP 50001 In", &udp_in)
+        && rebuild_rule("Blur LAN - UDP 50001 Out", &udp_out);
+    if udp_ok {
+        emit_log(app, "  LAN UDP 50001 rules: OK");
+        emit_firewall_check(app, "LAN UDP 50001", "created");
+    } else {
+        emit_log(app, "  LAN UDP 50001 rules: FAILED");
+        emit_firewall_check(app, "LAN UDP 50001", "failed");
+        all_ok = false;
     }
 
     // Enable all ICMPv4 rules
@@ -493,8 +465,9 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     });
 
     let app_fw = app.clone();
+    let game_exe = path_buf.clone();
     let thread_firewall = thread::spawn(move || {
-        match check_firewall_rules(&app_fw) {
+        match check_firewall_rules(&app_fw, &game_exe) {
             Ok(all_ok) => {
                 emit_run_step(&app_fw, "firewall", if all_ok { "ok" } else { "failed" });
                 Ok(all_ok)
@@ -548,8 +521,6 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
     ));
     emit_run_step(app, "adapters", "ok");
 
-    let monitor = lan_monitor::LanMonitor::start(app.clone(), bridge_status.address.clone());
-
     emit_status(app, "waiting");
     emit_log(app, "Waiting 2 seconds for the Winsock shim to initialize...");
     thread::sleep(Duration::from_secs(2));
@@ -577,7 +548,6 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
         }
     }
 
-    monitor.stop();
     bridge.cleanup(app);
 
     emit_log(app, "=== BLUR LAN MODE END ===");
@@ -659,6 +629,15 @@ fn main() {
         .setup(|app| {
             // Cleanup any leftover .old file from a previous update
             updater::cleanup_old_exe();
+
+            // LAN discovery runs for the whole app lifetime so the blue screen can show peers.
+            match lan_bridge::detect_address() {
+                Ok(address) => {
+                    let monitor = lan_monitor::LanMonitor::start(app.handle().clone(), address);
+                    app.state::<AppState>().lan_monitor.lock().unwrap().replace(monitor);
+                }
+                Err(e) => eprintln!("[lan] monitor not started: {e}"),
+            }
 
             let show_item = MenuItemBuilder::with_id("show", "Open").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Exit").build(app)?;
