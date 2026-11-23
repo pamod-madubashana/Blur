@@ -1,0 +1,3 @@
+LIBRARY blur_lan_bridge
+EXPORTS
+    plugin_init

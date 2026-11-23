@@ -4,3 +4,6 @@ dist
 *.log
 .cotrex/
 graphify-out/
+/src-tauri/lan-bridge/*.obj
+/src-tauri/lan-bridge/*.lib
+/src-tauri/lan-bridge/*.exp

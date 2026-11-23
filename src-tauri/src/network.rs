@@ -286,13 +286,8 @@ pub fn list_all_adapters() -> Result<Vec<AdapterInfo>, String> {
     Ok(adapters)
 }
 
-pub fn list_virtual_adapters() -> Result<Vec<String>, String> {
-    let adapters = list_all_adapters()?;
-    Ok(adapters
-        .into_iter()
-        .filter(|a| a.adapter_type == "virtual")
-        .map(|a| a.name)
-        .collect())
+pub(crate) fn is_virtual_name(name: &str) -> bool {
+    classify_adapter(name) == "virtual"
 }
 
 fn classify_adapter(name: &str) -> String {
