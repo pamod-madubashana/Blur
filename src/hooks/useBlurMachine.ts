@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { adapterService } from "@/services/adapterService";
 import type { AdapterPhase, AdapterProgress, AppState, NetworkAdapter } from "@/types/adapter";
+import type { LanSnapshot } from "@/types/lan";
 
 export interface FileCheckItem {
   file: string;
@@ -45,6 +46,7 @@ export function useBlurMachine() {
   const [discoveringItems, setDiscoveringItems] = useState<DiscoveringCheckItem[]>([]);
   const [discoveringCheckDone, setDiscoveringCheckDone] = useState(false);
   const [stepResults, setStepResults] = useState<RunStep[]>([]);
+  const [lan, setLan] = useState<LanSnapshot>({ listening: false, error: null, interface: "", peers: [] });
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdatePopup, setShowUpdatePopup] = useState(false);
   const busy = useRef(false);
@@ -230,6 +232,10 @@ export function useBlurMachine() {
       console.log("[backend]", event.payload);
     });
 
+    const unlistenLan = listen<LanSnapshot>("lan_peers", (event) => {
+      setLan(event.payload);
+    });
+
     return () => {
       unlistenStatus.then((fn) => fn());
       unlistenAdapters.then((fn) => fn());
@@ -243,6 +249,7 @@ export function useBlurMachine() {
       unlistenRunStep.then((fn) => fn());
       unlistenFinished.then((fn) => fn());
       unlistenLog.then((fn) => fn());
+      unlistenLan.then((fn) => fn());
     };
   }, []);
 
@@ -283,5 +290,5 @@ export function useBlurMachine() {
     setUpdateInfo(null);
   }, []);
 
-  return { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, updateInfo, showUpdatePopup, dismissUpdate } as const;
+  return { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, lan, updateInfo, showUpdatePopup, dismissUpdate } as const;
 }

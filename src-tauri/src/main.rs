@@ -2,6 +2,8 @@
 
 mod network;
 mod discovering;
+mod lan_bridge;
+mod lan_monitor;
 mod updater;
 
 use serde::{Deserialize, Serialize};
@@ -83,23 +85,6 @@ fn emit_log(app: &AppHandle, msg: impl Into<String>) {
 
 fn emit_status(app: &AppHandle, status: &str) {
     let _ = app.emit("status", status.to_string());
-}
-
-#[derive(Serialize, Clone)]
-struct AdapterProgressPayload {
-    name: String,
-    phase: String,
-}
-
-fn emit_adapter_progress(app: &AppHandle, name: &str, phase: &str) {
-    let _ = app.emit("adapter_progress", AdapterProgressPayload {
-        name: name.to_string(),
-        phase: phase.to_string(),
-    });
-}
-
-fn emit_adapters_list(app: &AppHandle, adapters: &[String]) {
-    let _ = app.emit("adapters", adapters.to_vec());
 }
 
 #[derive(Serialize, Clone)]
@@ -546,44 +531,35 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
         emit_log(app, "File check had errors - continuing anyway.");
     }
 
-    // Disable virtual adapters (VMware, VirtualBox, etc.)
-    emit_log(app, "Scanning for virtual adapters to disable...");
-    let all_virtual = network::list_virtual_adapters()?;
-    if all_virtual.is_empty() {
-        emit_log(app, "No virtual adapters found.");
-    } else {
-        emit_log(app, format!("Found {} virtual adapter(s) to disable.", all_virtual.len()));
-    }
-    emit_adapters_list(app, &all_virtual);
-    emit_status(app, "disabling");
-    let mut adapters_ok = true;
-    for name in &all_virtual {
-        emit_adapter_progress(app, name, "processing");
-        emit_log(app, format!("Disabling: {name}"));
-        match network::disable_adapter(name) {
-            Ok(()) => {
-                emit_log(app, "  -> OK".to_string());
-                emit_adapter_progress(app, name, "done");
-            }
-            Err(e) => {
-                emit_log(app, format!("  -> failed: {e}"));
-                emit_adapter_progress(app, name, "failed");
-                adapters_ok = false;
-            }
+    // Real LAN fix: force Blur's LAN discovery sockets onto the physical adapter
+    let (bridge, bridge_status) = match lan_bridge::prepare(app, work_dir) {
+        Ok(result) => result,
+        Err(e) => {
+            emit_log(app, format!("LAN bridge setup failed: {e}"));
+            emit_run_step(app, "adapters", "failed");
+            return Err(e);
         }
-        thread::sleep(Duration::from_millis(300));
-    }
-    emit_run_step(app, "adapters", if adapters_ok { "ok" } else { "failed" });
+    };
+    emit_log(app, format!(
+        "LAN bridge ready: adapter '{}' at {} (UDP 50001 owner: {})",
+        bridge_status.adapter,
+        bridge_status.address,
+        bridge_status.port_owner.as_deref().unwrap_or("none")
+    ));
+    emit_run_step(app, "adapters", "ok");
+
+    let monitor = lan_monitor::LanMonitor::start(app.clone(), bridge_status.address.clone());
 
     emit_status(app, "waiting");
-    emit_log(app, "Waiting 5 seconds for network to settle...");
-    thread::sleep(Duration::from_secs(5));
+    emit_log(app, "Waiting 2 seconds for the Winsock shim to initialize...");
+    thread::sleep(Duration::from_secs(2));
 
     emit_status(app, "launching");
     emit_log(app, "Launching Blur...");
 
     let launch_result = Command::new(&path_buf)
         .current_dir(work_dir)
+        .env("BLUR_LAN_BRIDGE", "1")
         .spawn();
 
     match launch_result {
@@ -601,39 +577,11 @@ fn run_sequence(app: &AppHandle, game_path: &str) -> Result<(), String> {
         }
     }
 
-    emit_log(app, "Waiting 2 seconds before restoring adapters...");
-    thread::sleep(Duration::from_secs(2));
-
-    // Restore all virtual adapters
-    restore_adapters(app, &all_virtual);
+    monitor.stop();
+    bridge.cleanup(app);
 
     emit_log(app, "=== BLUR LAN MODE END ===");
     Ok(())
-}
-
-fn restore_adapters(app: &AppHandle, adapters: &[String]) {
-    emit_adapters_list(app, adapters);
-    emit_status(app, "restoring");
-    if adapters.is_empty() {
-        emit_log(app, "No adapters to restore.");
-        return;
-    }
-    emit_log(app, format!("Restoring {} adapter(s)...", adapters.len()));
-    for name in adapters {
-        emit_adapter_progress(app, name, "processing");
-        emit_log(app, format!("Enabling: {name}"));
-        match network::enable_adapter(name) {
-            Ok(()) => {
-                emit_log(app, "  -> OK".to_string());
-                emit_adapter_progress(app, name, "done");
-            }
-            Err(e) => {
-                emit_log(app, format!("  -> failed: {e}"));
-                emit_adapter_progress(app, name, "failed");
-            }
-        }
-    }
-    emit_log(app, "All adapters restored.");
 }
 
 #[tauri::command]

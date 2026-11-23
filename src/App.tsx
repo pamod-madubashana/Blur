@@ -1,6 +1,7 @@
 import { BlurControl } from "@/components/BlurControl";
 import { CyberBackground } from "@/components/CyberBackground";
 import { LaunchModal } from "@/components/LaunchModal";
+import { LanPlayersPanel } from "@/components/LanPlayersPanel";
 import { OperationModal } from "@/components/OperationModal";
 import { PreparingModal } from "@/components/PreparingModal";
 import { StatusPanel } from "@/components/StatusPanel";
@@ -10,7 +11,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
 
 export default function App() {
-  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, updateInfo, showUpdatePopup, dismissUpdate } =
+  const { state, items, mode, adapterModalOpen, launchModalOpen, preparingOpen, fileItems, fileCheckDone, firewallItems, firewallCheckDone, discoveringItems, discoveringCheckDone, stepResults, overall, completed, closing, activate, lan, updateInfo, showUpdatePopup, dismissUpdate } =
     useBlurMachine();
   const [version, setVersion] = useState("");
 
@@ -88,6 +89,8 @@ export default function App() {
       {running && stepResults.length > 0 && (
         <StatusPanel steps={stepResults} />
       )}
+
+      {running && <LanPlayersPanel lan={lan} />}
     </main>
   );
 }
